@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartStock AI - Enterprise Inventory & POS System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for Admin Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- QRCode JS Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .glass {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.3);
+            border-radius: 9999px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.6);
+        }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-300">
+
+    <!-- Global Toast Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3 max-w-sm pointer-events-none"></div>
+
+    <!-- MAIN WRAPPER -->
+    <div id="app" class="flex-1 flex flex-col">
+
+        <!-- AUTH SCREEN (LOGIN / REGISTER / FORGOT PASS) -->
+        <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 relative overflow-hidden">
+            <!-- Background Glow Elements -->
+            <div class="absolute -top-32 -left-32 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10">
+                <!-- App Logo & Branding -->
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/30 mb-4">
+                        <i class="fa-solid fa-boxes-stacked text-3xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white">SmartStock AI</h1>
+                    <p class="text-xs text-slate-400 mt-1">Next-Gen Inventory Management & Store POS</p>
+                </div>
+
+                <!-- Role Selector Tabs -->
+                <div class="grid grid-cols-2 p-1 bg-slate-800/80 rounded-2xl mb-6 border border-slate-700/50">
+                    <button type="button" id="role-user-btn" onclick="setAuthRole('user')" class="py-2 text-sm font-semibold rounded-xl transition-all duration-200 text-slate-300 hover:text-white">
+                        <i class="fa-solid fa-user mr-2 text-xs"></i>Customer / User
+                    </button>
+                    <button type="button" id="role-admin-btn" onclick="setAuthRole('admin')" class="py-2 text-sm font-semibold rounded-xl transition-all duration-200 text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-user-shield mr-2 text-xs"></i>Admin Portal
+                    </button>
+                </div>
+
+                <!-- Unified Login Form -->
+                <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+                    <input type="hidden" id="login-role" value="user">
+
+                    <!-- Role Badge Indicator -->
+                    <div class="flex items-center justify-between text-xs font-semibold px-1 text-slate-400">
+                        <span>Signing in as:</span>
+                        <span id="role-badge" class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">User Account</span>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Username</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-at absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                            <input type="text" id="login-username" required placeholder="e.g. jondoe" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Email or Phone Number</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                            <input type="text" id="login-identifier" required placeholder="user@domain.com or +91 9876543210" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs font-medium text-slate-300">Password</label>
+                            <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-indigo-400 hover:text-indigo-300 transition hover:underline">Forgot Password?</button>
+                        </div>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                            <input type="password" id="login-password" required placeholder="••••••••" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                            <button type="button" onclick="togglePasswordVisibility('login-password', this)" class="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-200">
+                                <i class="fa-solid fa-eye text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition duration-200 transform active:scale-95 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-to-bracket"></i> Sign In to SmartStock
+                    </button>
+                </form>
+
+                <div class="relative my-6 text-center">
+                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800"></div></div>
+                    <span class="relative bg-slate-900 px-3 text-xs text-slate-500 font-medium uppercase">Or continue with</span>
+                </div>
+
+                <!-- Google OAuth Simulation Button -->
+                <button type="button" onclick="openGoogleOAuthModal()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl font-medium text-sm flex items-center justify-center gap-3 transition">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.2 9 5 12 5z"/><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"/><path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.2-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"/></svg>
+                    Sign in with Google
+                </button>
+
+                <!-- Demo Credentials Quick Selector -->
+                <div class="mt-6 pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400">
+                    <p class="font-medium mb-2 text-slate-300">Fast Demo Logins:</p>
+                    <div class="flex gap-2 justify-center">
+                        <button type="button" onclick="fillDemoCredentials('admin')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700">Demo Admin</button>
+                        <button type="button" onclick="fillDemoCredentials('user')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700">Demo User</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- APP MAIN INTERFACE (NAVBAR + CONTENT VIEWS) -->
+        <div id="main-interface" class="hidden min-h-screen flex flex-col">
+            <!-- Navbar -->
+            <header class="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                    <!-- Brand -->
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-bold text-xl shadow-md">
+                            <i class="fa-solid fa-boxes-stacked"></i>
+                        </div>
+                        <div>
+                            <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">SmartStock</span>
+                            <span id="nav-role-badge" class="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">Role</span>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <nav id="app-nav-tabs" class="hidden md:flex items-center gap-1">
+                        <!-- Navigation items injected via JS based on role -->
+                    </nav>
+
+                    <!-- User Tools & Actions -->
+                    <div class="flex items-center gap-3">
+                        <!-- Theme Toggle -->
+                        <button onclick="toggleDarkMode()" class="p-2.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                            <i id="theme-icon" class="fa-solid fa-moon text-lg"></i>
+                        </button>
+
+                        <!-- Cart Button (Customer View) -->
+                        <button id="nav-cart-btn" onclick="switchView('cart')" class="relative p-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition">
+                            <i class="fa-solid fa-cart-shopping text-lg"></i>
+                            <span id="cart-badge" class="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 hidden">0</span>
+                        </button>
+
+                        <!-- User Profile Menu -->
+                        <div class="flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-800">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-sm border border-indigo-200 dark:border-indigo-800" id="user-avatar-initials">
+                                U
+                            </div>
+                            <div class="hidden lg:block text-left">
+                                <p id="nav-user-name" class="text-xs font-bold leading-none text-slate-800 dark:text-slate-100">User</p>
+                                <p id="nav-user-identifier" class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">user@smartstock.com</p>
+                            </div>
+                            <button onclick="logout()" title="Sign Out" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition ml-1">
+                                <i class="fa-solid fa-right-from-bracket"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mobile Navigation Bar -->
+                <div id="mobile-nav" class="md:hidden flex overflow-x-auto px-4 py-2 bg-slate-50 dark:bg-slate-900/90 border-t border-slate-200 dark:border-slate-800 gap-2 text-xs font-medium custom-scrollbar">
+                    <!-- Injected dynamically -->
+                </div>
+            </header>
+
+            <!-- MAIN CONTAINER VIEWS -->
+            <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+                <!-- 1. ADMIN DASHBOARD VIEW -->
+                <section id="view-admin-dashboard" class="view-section space-y-6 hidden">
+                    <!-- Dashboard Metrics Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Total Stock Value</p>
+                                <h3 id="dash-total-value" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">₹0</h3>
+                                <p class="text-[11px] text-emerald-500 font-medium mt-1"><i class="fa-solid fa-arrow-trend-up"></i> Realtime valuation</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-indian-rupee-sign"></i>
+                            </div>
+                        </div>
+
+                        <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Total Unique SKUs</p>
+                                <h3 id="dash-total-products" class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">0</h3>
+                                <p class="text-[11px] text-indigo-500 font-medium mt-1">Across 12 Categories</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-boxes-stacked"></i>
+                            </div>
+                        </div>
+
+                        <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Low Stock Alerts</p>
+                                <h3 id="dash-low-stock" class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">0</h3>
+                                <p class="text-[11px] text-amber-500 font-medium mt-1"><i class="fa-solid fa-triangle-exclamation"></i> Action required</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-box-open"></i>
+                            </div>
+                        </div>
+
+                        <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 dark:text-slate-400">Total Sales Generated</p>
+                                <h3 id="dash-total-sales" class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">₹0</h3>
+                                <p class="text-[11px] text-emerald-500 font-medium mt-1"><i class="fa-solid fa-circle-check"></i> Orders fulfilled</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-receipt"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Charts Row -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Category Stock Chart -->
+                        <div class="lg:col-span-2 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                    <i class="fa-solid fa-chart-column text-indigo-500"></i> Stock Distribution by Category
+                                </h4>
+                                <span class="text-xs text-slate-400">Live inventory count</span>
+                            </div>
+                            <div class="h-64">
+                                <canvas id="chart-category-stock"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Low Stock Urgency List -->
+                        <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+                            <h4 class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-4">
+                                <i class="fa-solid fa-bell text-amber-500"></i> Critical Low Stock Alerts
+                            </h4>
+                            <div id="dash-low-stock-list" class="flex-1 space-y-3 overflow-y-auto max-h-64 custom-scrollbar pr-1">
+                                <!-- Injected via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. INVENTORY MANAGEMENT VIEW (ADMIN) -->
+                <section id="view-admin-inventory" class="view-section space-y-6 hidden">
+                    <!-- Header Actions Bar -->
+                    <div class="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                        <div class="flex items-center gap-3 w-full sm:w-auto">
+                            <div class="relative w-full sm:w-72">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-sm"></i>
+                                <input type="text" id="admin-search-input" onkeyup="filterAdminInventory()" placeholder="Search product name, SKU..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <select id="admin-category-filter" onchange="filterAdminInventory()" class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-xl px-3 py-2 focus:outline-none">
+                                <option value="All">All Categories</option>
+                                <!-- Injected JS -->
+                            </select>
+                        </div>
+                        <button onclick="openProductModal()" class="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-plus"></i> Add New Product
+                        </button>
+                    </div>
+
+                    <!-- Inventory Table -->
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase border-b border-slate-200 dark:border-slate-800">
+                                        <th class="p-4">Product Details</th>
+                                        <th class="p-4">Category</th>
+                                        <th class="p-4">Price (₹)</th>
+                                        <th class="p-4">Stock Level</th>
+                                        <th class="p-4">Status</th>
+                                        <th class="p-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-inventory-table" class="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
+                                    <!-- Injected JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. STORE CATALOG & DISCOVERY VIEW (USER / SHOPPER) -->
+                <section id="view-user-store" class="view-section space-y-6 hidden">
+                    <!-- Search & Visual AI Upload Bar -->
+                    <div class="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                        <div class="flex flex-col md:flex-row gap-4 items-center justify-between">
+                            <div>
+                                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100">Explore SmartStock Catalog</h2>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">Discover premium goods across India with instant checkout</p>
+                            </div>
+
+                            <!-- AI Visual Search Trigger -->
+                            <label class="cursor-pointer px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> AI Visual Search Simulation
+                                <input type="file" id="ai-search-file" accept="image/*" onchange="triggerAISearch(event)" class="hidden">
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="sm:col-span-2 relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                                <input type="text" id="store-search-input" onkeyup="renderStoreProducts()" placeholder="Search gadgets, apparel, groceries, or keywords..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <select id="store-category-filter" onchange="renderStoreProducts()" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-xl px-3 py-2.5 focus:outline-none">
+                                    <option value="All">All Categories</option>
+                                    <!-- Injected JS -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Search Banner Status -->
+                    <div id="ai-search-banner" class="hidden p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between text-xs text-indigo-400">
+                        <span id="ai-search-msg"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Analyzing visual properties...</span>
+                        <button onclick="clearAISearch()" class="hover:underline text-indigo-300 font-semibold">Clear AI Filter</button>
+                    </div>
+
+                    <!-- Products Grid -->
+                    <div id="store-products-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        <!-- Injected JS -->
+                    </div>
+                </section>
+
+                <!-- 4. SHOPPING CART & CHECKOUT VIEW -->
+                <section id="view-cart" class="view-section space-y-6 hidden">
+                    <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-cart-shopping text-indigo-600"></i> Shopping Cart & Checkout
+                    </h2>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- Cart Items List -->
+                        <div class="lg:col-span-2 space-y-4">
+                            <div id="cart-items-container" class="space-y-3">
+                                <!-- Injected JS -->
+                            </div>
+                        </div>
+
+                        <!-- Checkout & Order Summary -->
+                        <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm h-fit space-y-5">
+                            <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800 pb-3">Order Summary</h3>
+
+                            <!-- Delivery Form Inputs -->
+                            <div class="space-y-3 text-xs">
+                                <div>
+                                    <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
+                                    <input type="text" id="checkout-name" placeholder="John Doe" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone Number</label>
+                                    <input type="tel" id="checkout-phone" placeholder="+91 9876543210" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Delivery Address</label>
+                                    <textarea id="checkout-address" rows="2" placeholder="Street, Flat No, City, Pincode" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-sm">
+                                <div class="flex justify-between text-slate-500">
+                                    <span>Subtotal</span>
+                                    <span id="summary-subtotal" class="font-semibold text-slate-800 dark:text-slate-200">₹0</span>
+                                </div>
+                                <div class="flex justify-between text-slate-500">
+                                    <span>GST / Taxes (18%)</span>
+                                    <span id="summary-tax" class="font-semibold text-slate-800 dark:text-slate-200">₹0</span>
+                                </div>
+                                <div class="flex justify-between text-slate-500">
+                                    <span>Shipping (India)</span>
+                                    <span class="font-semibold text-emerald-500">FREE</span>
+                                </div>
+                                <div class="flex justify-between text-base font-bold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <span>Total Payable</span>
+                                    <span id="summary-total" class="text-indigo-600 dark:text-indigo-400">₹0</span>
+                                </div>
+                            </div>
+
+                            <button onclick="initiateUPICheckout()" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-qrcode"></i> Pay via UPI (₹ INR)
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. USER ORDER HISTORY VIEW -->
+                <section id="view-user-orders" class="view-section space-y-6 hidden">
+                    <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i> My Orders & Receipts
+                    </h2>
+                    <div id="orders-history-list" class="space-y-4">
+                        <!-- Injected JS -->
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- MODALS SECTION -->
+
+    <!-- 1. FORGOT PASSWORD MULTI-STEP MODAL -->
+    <div id="modal-forgot-pass" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 text-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
+            <button onclick="closeForgotPasswordModal()" class="absolute right-4 top-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <!-- Reset Step Header Indicator -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <span id="reset-step-title" class="text-xs font-bold uppercase tracking-wider text-indigo-400">Step 1 of 4: Account Lookup</span>
+                    <span id="reset-step-badge" class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Verification</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div id="reset-progress-bar" class="bg-indigo-500 h-full w-1/4 transition-all duration-300"></div>
+                </div>
+            </div>
+
+            <!-- STEP 1: Account Identification -->
+            <form id="reset-step-1" onsubmit="handleResetStep1(event)" class="space-y-4">
+                <h3 class="text-lg font-bold">Reset Password</h3>
+                <p class="text-xs text-slate-400">Enter your account details to start verification.</p>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Select Role</label>
+                    <select id="reset-role" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                        <option value="user">User Account</option>
+                        <option value="admin">Admin Portal</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Username</label>
+                    <input type="text" id="reset-username" required placeholder="Your username" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Registered Phone or Email</label>
+                    <input type="text" id="reset-identifier" required placeholder="Phone number or email" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                </div>
+
+                <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition">
+                    Find Account & Continue
+                </button>
+            </form>
+
+            <!-- STEP 2: Choose Verification Method -->
+            <div id="reset-step-2" class="space-y-4 hidden">
+                <h3 class="text-lg font-bold">Select OTP Method</h3>
+                <p class="text-xs text-slate-400">Choose where you want to receive your 6-digit verification code.</p>
+
+                <div class="space-y-3">
+                    <button type="button" onclick="sendOTP('SMS')" class="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left flex items-center gap-3 transition">
+                        <div class="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-comment-sms"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold">Send OTP via SMS</p>
+                            <p id="reset-mask-phone" class="text-xs text-slate-400">+91 ********10</p>
+                        </div>
+                    </button>
+
+                    <button type="button" onclick="sendOTP('Email')" class="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left flex items-center gap-3 transition">
+                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-envelope"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold">Send OTP via Email</p>
+                            <p id="reset-mask-email" class="text-xs text-slate-400">u***@domain.com</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 3: Enter OTP -->
+            <form id="reset-step-3" onsubmit="handleResetStep3(event)" class="space-y-4 hidden">
+                <h3 class="text-lg font-bold">Enter 6-Digit OTP</h3>
+                <p id="otp-sent-msg" class="text-xs text-slate-400">A verification code has been dispatched.</p>
+
+                <!-- Demo Auto-Fill Notification Prompt -->
+                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center justify-between">
+                    <span>Demo OTP Code: <strong id="demo-otp-code" class="text-white tracking-widest font-mono text-sm">123456</strong></span>
+                    <button type="button" onclick="autoFillOTP()" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/40 rounded text-amber-200 font-bold">Auto-Fill</button>
+                </div>
+
+                <div class="flex justify-center gap-2 my-2">
+                    <input type="text" maxlength="6" id="reset-otp-input" required placeholder="123456" class="w-full text-center tracking-widest text-xl font-mono bg-slate-800 border border-slate-700 rounded-xl py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div class="flex justify-between items-center text-xs">
+                    <span id="resend-timer-text" class="text-slate-400">Resend in <span id="timer-seconds">30</span>s</span>
+                    <button type="button" id="resend-otp-btn" disabled onclick="resendOTP()" class="text-indigo-400 font-semibold disabled:opacity-50">Resend Code</button>
+                </div>
+
+                <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition">
+                    Verify Code
+                </button>
+            </form>
+
+            <!-- STEP 4: Set New Password -->
+            <form id="reset-step-4" onsubmit="handleResetStep4(event)" class="space-y-4 hidden">
+                <h3 class="text-lg font-bold">Set New Password</h3>
+                <p class="text-xs text-slate-400">Create a secure password with at least 6 characters.</p>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">New Password</label>
+                    <input type="password" id="reset-new-pass" onkeyup="checkPasswordStrength(this.value)" required placeholder="••••••••" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                    
+                    <!-- Strength meter -->
+                    <div class="mt-2 flex items-center gap-2">
+                        <div class="flex-1 bg-slate-800 h-1.5 rounded-full overflow-hidden flex gap-1">
+                            <div id="str-1" class="h-full w-1/3 bg-slate-700"></div>
+                            <div id="str-2" class="h-full w-1/3 bg-slate-700"></div>
+                            <div id="str-3" class="h-full w-1/3 bg-slate-700"></div>
+                        </div>
+                        <span id="str-label" class="text-[10px] text-slate-400 font-semibold">Weak</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Confirm New Password</label>
+                    <input type="password" id="reset-confirm-pass" required placeholder="••••••••" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
+                </div>
+
+                <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition">
+                    Reset Password & Auto-Login
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. GOOGLE OAUTH SIMULATION MODAL -->
+    <div id="modal-google-oauth" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white text-slate-900 rounded-3xl w-full max-w-sm p-6 shadow-2xl relative overflow-hidden">
+            <button onclick="closeGoogleOAuthModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-700">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="text-center mb-6">
+                <svg class="w-8 h-8 mx-auto mb-2" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.2 9 5 12 5z"/><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"/><path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.2-6.4-5.2L1.9 16c1.8 3.7 5.6 7 10.1 7z"/></svg>
+                <h3 class="text-base font-bold">Sign in with Google</h3>
+                <p class="text-xs text-slate-500">Choose an account to continue to SmartStock AI</p>
+            </div>
+
+            <div class="space-y-2">
+                <button onclick="loginWithGoogleAccount('admin')" class="w-full p-3 rounded-xl hover:bg-slate-50 border border-slate-200 flex items-center gap-3 text-left transition">
+                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop" class="w-9 h-9 rounded-full object-cover">
+                    <div>
+                        <p class="text-xs font-bold text-slate-800">Prathamesh Phutane (Admin)</p>
+                        <p class="text-[10px] text-slate-500">admin@smartstock.in</p>
+                    </div>
+                </button>
+
+                <button onclick="loginWithGoogleAccount('user')" class="w-full p-3 rounded-xl hover:bg-slate-50 border border-slate-200 flex items-center gap-3 text-left transition">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&auto=format&fit=crop" class="w-9 h-9 rounded-full object-cover">
+                    <div>
+                        <p class="text-xs font-bold text-slate-800">Rahul Sharma (User)</p>
+                        <p class="text-[10px] text-slate-500">rahul.sharma@gmail.com</p>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. ADD / EDIT PRODUCT MODAL (ADMIN) -->
+    <div id="modal-product" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative">
+            <button onclick="closeProductModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <h3 id="product-modal-title" class="text-xl font-bold mb-4">Add New Product</h3>
+
+            <form id="product-form" onsubmit="saveProduct(event)" class="space-y-4 text-xs">
+                <input type="hidden" id="prod-id">
+
+                <div>
+                    <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Product Title</label>
+                    <input type="text" id="prod-title" required placeholder="e.g. Wireless Noise-Cancelling Headphones" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Category</label>
+                        <select id="prod-category" onchange="handleCategoryChange(this.value)" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                            <!-- Injected JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">SKU Code</label>
+                        <input type="text" id="prod-sku" required placeholder="e.g. ELEC-902" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Price (₹ INR)</label>
+                        <input type="number" id="prod-price" min="1" step="0.01" required placeholder="1499" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Stock Quantity</label>
+                        <input type="number" id="prod-stock" min="0" required placeholder="25" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                    </div>
+                </div>
+
+                <!-- Product Image Selection Options -->
+                <div>
+                    <label class="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Product Image Option</label>
+                    <div class="space-y-2">
+                        <input type="text" id="prod-image-url" oninput="previewModalImage(this.value)" placeholder="Enter High-Res Image URL or leave blank for category preset" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-sm">
+                        
+                        <div class="flex items-center gap-3">
+                            <label class="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 rounded-lg cursor-pointer text-slate-700 dark:text-slate-300 font-semibold">
+                                <i class="fa-solid fa-upload mr-1"></i> Upload Image File
+                                <input type="file" accept="image/*" onchange="handleImageFileUpload(event)" class="hidden">
+                            </label>
+                            <span class="text-[10px] text-slate-500">Auto-matches high-res category stock image if blank</span>
+                        </div>
+                    </div>
+
+                    <!-- Instant Preview Thumbnail -->
+                    <div class="mt-3 flex items-center gap-3">
+                        <img id="prod-img-preview" src="https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=300" class="w-16 h-16 rounded-xl object-cover border border-slate-300 dark:border-slate-700">
+                        <span class="text-[11px] text-slate-400">Live Image Preview</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition">
+                    Save Product to Inventory
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. UPI PAYMENT MODAL (WITH DYNAMIC QR) -->
+    <div id="modal-upi-payment" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl w-full max-w-md p-6 shadow-2xl text-center relative">
+            <button onclick="closeUPIModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs mb-3">
+                <i class="fa-solid fa-shield-halved"></i> Secure UPI Gateway
+            </div>
+
+            <h3 class="text-xl font-bold">Complete Payment via UPI</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Scan with GPay, PhonePe, Paytm, or BHIM</p>
+
+            <!-- UPI QR Code Container -->
+            <div class="my-6 p-4 bg-white rounded-2xl inline-block border-2 border-indigo-500/20 shadow-md">
+                <div id="qrcode-canvas" class="flex justify-center"></div>
+            </div>
+
+            <div class="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl text-xs space-y-1 mb-6 text-left">
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Payee UPI ID:</span>
+                    <span class="font-bold font-mono text-indigo-600 dark:text-indigo-400">phutaneprathamesh829@oksbi</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Total Amount:</span>
+                    <span id="upi-modal-amount" class="font-extrabold text-slate-900 dark:text-white text-sm">₹0</span>
+                </div>
+            </div>
+
+            <!-- Simulated Payment Verification Trigger -->
+            <button onclick="simulateSuccessfulUPIPayment()" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-check"></i> Verify Payment & Generate Invoice
+            </button>
+        </div>
+    </div>
+
+    <!-- 5. PRINTABLE INVOICE / RECEIPT MODAL -->
+    <div id="modal-invoice" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white text-slate-900 rounded-3xl w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative">
+            <div class="no-print flex justify-between items-center mb-4 border-b pb-3">
+                <h3 class="font-bold text-lg">Order Invoice & Receipt</h3>
+                <div class="flex items-center gap-2">
+                    <button onclick="window.print()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow">
+                        <i class="fa-solid fa-print mr-1"></i> Print / Download
+                    </button>
+                    <button onclick="closeInvoiceModal()" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Printable Invoice Content -->
+            <div id="invoice-content" class="p-4 space-y-6 text-xs border border-slate-200 rounded-2xl bg-white">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        
+        // --- 1. APPLICATION CATEGORIES & DATA STORE ---
+        const CATEGORIES = [
+            'Electronics', 'Mobiles & Accessories', 'Fashion & Apparel', 
+            'Watches & Wearables', 'Home & Kitchen', 'Groceries & Daily Needs', 
+            'Beauty & Personal Care', 'Sports & Fitness', 'Books & Stationery', 
+            'Automotive', 'Toys & Baby Care', 'Furniture'
+        ];
+
+        // High resolution Unsplash stock presets per category
+        const CATEGORY_IMAGES = {
+            'Electronics': 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600',
+            'Mobiles & Accessories': 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600',
+            'Fashion & Apparel': 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600',
+            'Watches & Wearables': 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600',
+            'Home & Kitchen': 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=600',
+            'Groceries & Daily Needs': 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600',
+            'Beauty & Personal Care': 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600',
+            'Sports & Fitness': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=600',
+            'Books & Stationery': 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=600',
+            'Automotive': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600',
+            'Toys & Baby Care': 'https://images.unsplash.com/photo-1566576721346-d4a3b4eaeb55?w=600',
+            'Furniture': 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600'
+        };
+
+        // Initial Product Inventory
+        let inventory = [
+            { id: '1', title: 'Noise-Cancelling Headphones Pro', category: 'Electronics', price: 4999, stock: 18, sku: 'ELEC-101', image: CATEGORY_IMAGES['Electronics'] },
+            { id: '2', title: 'Flagship Smartphone 128GB', category: 'Mobiles & Accessories', price: 42999, stock: 8, sku: 'MOB-202', image: CATEGORY_IMAGES['Mobiles & Accessories'] },
+            { id: '3', title: 'Luxury Chronograph Leather Watch', category: 'Watches & Wearables', price: 8999, stock: 4, sku: 'WAT-303', image: CATEGORY_IMAGES['Watches & Wearables'] },
+            { id: '4', title: 'Ergonomic Mesh Office Chair', category: 'Furniture', price: 7499, stock: 12, sku: 'FUR-404', image: CATEGORY_IMAGES['Furniture'] },
+            { id: '5', title: 'Organic Basmati Rice 5kg', category: 'Groceries & Daily Needs', price: 650, stock: 45, sku: 'GRO-505', image: CATEGORY_IMAGES['Groceries & Daily Needs'] },
+            { id: '6', title: 'Smart Fitness Tracker Band', category: 'Watches & Wearables', price: 2499, stock: 2, sku: 'WAT-304', image: CATEGORY_IMAGES['Watches & Wearables'] }
+        ];
+
+        // Global State variables
+        let currentUser = null; // { username, identifier, role }
+        let cart = []; // [{ product, quantity }]
+        let orders = []; // [{ id, date, items, total, status, paymentMethod }]
+        let demoOTP = '123456';
+        let pendingResetUser = null;
+        let otpCountdown = 30;
+        let otpInterval = null;
+        let pendingCheckoutData = null;
+
+
+        // Initialize App on DOM Load
+        window.addEventListener('DOMContentLoaded', () => {
+            populateCategoryDropdowns();
+            renderAdminInventory();
+            renderStoreProducts();
+            updateDashboardMetrics();
+        });
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgColors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                info: 'bg-indigo-600 text-white'
+            };
+
+            toast.className = `p-4 rounded-2xl shadow-xl font-medium text-xs flex items-center gap-3 transition-all transform translate-y-2 pointer-events-auto ${bgColors[type] || bgColors.info}`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-info text-base"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-[-10px]');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // Auth Role Toggle
+        function setAuthRole(role) {
+            document.getElementById('login-role').value = role;
+            const userBtn = document.getElementById('role-user-btn');
+            const adminBtn = document.getElementById('role-admin-btn');
+            const badge = document.getElementById('role-badge');
+
+            if (role === 'admin') {
+                adminBtn.className = "py-2 text-sm font-semibold rounded-xl transition-all duration-200 bg-indigo-600 text-white shadow-md";
+                userBtn.className = "py-2 text-sm font-semibold rounded-xl transition-all duration-200 text-slate-400 hover:text-white";
+                badge.innerText = "Admin Portal";
+                badge.className = "px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30";
+            } else {
+                userBtn.className = "py-2 text-sm font-semibold rounded-xl transition-all duration-200 bg-indigo-600 text-white shadow-md";
+                adminBtn.className = "py-2 text-sm font-semibold rounded-xl transition-all duration-200 text-slate-400 hover:text-white";
+                badge.innerText = "User Account";
+                badge.className = "px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+            }
+        }
+
+        // Demo Credentials Filler
+        function fillDemoCredentials(role) {
+            setAuthRole(role);
+            if (role === 'admin') {
+                document.getElementById('login-username').value = 'admin';
+                document.getElementById('login-identifier').value = 'admin@smartstock.in';
+                document.getElementById('login-password').value = 'admin123';
+            } else {
+                document.getElementById('login-username').value = 'rahul_user';
+                document.getElementById('login-identifier').value = '+919876543210';
+                document.getElementById('login-password').value = 'user123';
+            }
+        }
+
+        // Handle Login Submission
+        function handleLogin(e) {
+            e.preventDefault();
+            const role = document.getElementById('login-role').value;
+            const username = document.getElementById('login-username').value.trim();
+            const identifier = document.getElementById('login-identifier').value.trim();
+
+            currentUser = {
+                username: username,
+                identifier: identifier,
+                role: role
+            };
+
+            showToast(`Welcome back, ${username}! Signed in as ${role.toUpperCase()}`, 'success');
+            setupInterfaceForRole();
+        }
+
+        // Switch to App Main Screen
+        function setupInterfaceForRole() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-interface').classList.remove('hidden');
+
+            document.getElementById('nav-user-name').innerText = currentUser.username;
+            document.getElementById('nav-user-identifier').innerText = currentUser.identifier;
+            document.getElementById('user-avatar-initials').innerText = currentUser.username.charAt(0).toUpperCase();
+
+            const roleBadge = document.getElementById('nav-role-badge');
+            roleBadge.innerText = currentUser.role.toUpperCase();
+
+            // Setup Navigation links based on role
+            const navTabs = document.getElementById('app-nav-tabs');
+            const mobileNav = document.getElementById('mobile-nav');
+
+            if (currentUser.role === 'admin') {
+                navTabs.innerHTML = `
+                    <button onclick="switchView('admin-dashboard')" id="nav-btn-admin-dashboard" class="nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50">Dashboard</button>
+                    <button onclick="switchView('admin-inventory')" id="nav-btn-admin-inventory" class="nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 dark:text-slate-400">Inventory Management</button>
+                    <button onclick="switchView('user-store')" id="nav-btn-user-store" class="nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 dark:text-slate-400">Live Store View</button>
+                `;
+                mobileNav.innerHTML = navTabs.innerHTML;
+                document.getElementById('nav-cart-btn').classList.add('hidden');
+                switchView('admin-dashboard');
+            } else {
+                navTabs.innerHTML = `
+                    <button onclick="switchView('user-store')" id="nav-btn-user-store" class="nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50">Store & Shop</button>
+                    <button onclick="switchView('user-orders')" id="nav-btn-user-orders" class="nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 dark:text-slate-400">My Orders</button>
+                `;
+                mobileNav.innerHTML = navTabs.innerHTML;
+                document.getElementById('nav-cart-btn').classList.remove('hidden');
+                switchView('user-store');
+            }
+        }
+
+        // Logout
+        function logout() {
+            currentUser = null;
+            document.getElementById('main-interface').classList.add('hidden');
+            document.getElementById('auth-screen').classList.remove('hidden');
+            showToast('Logged out successfully', 'info');
+        }
+
+        // View Switching System
+        function switchView(viewName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById(`view-${viewName}`);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.className = "nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 dark:text-slate-400";
+            });
+            const activeBtn = document.getElementById(`nav-btn-${viewName}`);
+            if (activeBtn) activeBtn.className = "nav-tab px-3 py-2 text-xs font-bold rounded-xl transition text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50";
+
+            if (viewName === 'cart') renderCart();
+            if (viewName === 'user-orders') renderOrderHistory();
+            if (viewName === 'admin-dashboard') updateDashboardMetrics();
+        }
+
+
+        // Forgot Password Modal Handlers
+        function openForgotPasswordModal() {
+            document.getElementById('modal-forgot-pass').classList.remove('hidden');
+            document.getElementById('modal-forgot-pass').classList.add('flex');
+            setResetStep(1);
+        }
+
+        function closeForgotPasswordModal() {
+            document.getElementById('modal-forgot-pass').classList.add('hidden');
+            document.getElementById('modal-forgot-pass').classList.remove('flex');
+            clearInterval(otpInterval);
+        }
+
+        function setResetStep(step) {
+            for (let i = 1; i <= 4; i++) {
+                document.getElementById(`reset-step-${i}`).classList.add('hidden');
+            }
+            document.getElementById(`reset-step-${step}`).classList.remove('hidden');
+            
+            const titles = [
+                'Step 1 of 4: Account Lookup',
+                'Step 2 of 4: Select OTP Channel',
+                'Step 3 of 4: Verify OTP Code',
+                'Step 4 of 4: Set New Password'
+            ];
+            document.getElementById('reset-step-title').innerText = titles[step - 1];
+            document.getElementById('reset-progress-bar').style.width = `${step * 25}%`;
+        }
+
+        function handleResetStep1(e) {
+            e.preventDefault();
+            const username = document.getElementById('reset-username').value;
+            const identifier = document.getElementById('reset-identifier').value;
+            const role = document.getElementById('reset-role').value;
+
+            pendingResetUser = { username, identifier, role };
+            
+            // Mask details for Step 2
+            document.getElementById('reset-mask-phone').innerText = `+91 *****${identifier.slice(-3)}`;
+            document.getElementById('reset-mask-email').innerText = `${username.slice(0, 2)}***@domain.com`;
+
+            setResetStep(2);
+        }
+
+        function sendOTP(channel) {
+            demoOTP = Math.floor(100000 + Math.random() * 900000).toString();
+            document.getElementById('demo-otp-code').innerText = demoOTP;
+            document.getElementById('otp-sent-msg').innerText = `OTP code sent via ${channel} to registered contact.`;
+
+            setResetStep(3);
+            startOTPTimer();
+            showToast(`Demo OTP code generated: ${demoOTP}`, 'warning');
+        }
+
+        function startOTPTimer() {
+            otpCountdown = 30;
+            const btn = document.getElementById('resend-otp-btn');
+            btn.disabled = true;
+
+            clearInterval(otpInterval);
+            otpInterval = setInterval(() => {
+                otpCountdown--;
+                document.getElementById('timer-seconds').innerText = otpCountdown;
+                if (otpCountdown <= 0) {
+                    clearInterval(otpInterval);
+                    btn.disabled = false;
+                    document.getElementById('resend-timer-text').innerText = "OTP expired";
+                }
+            }, 1000);
+        }
+
+        function autoFillOTP() {
+            document.getElementById('reset-otp-input').value = demoOTP;
+        }
+
+        function resendOTP() {
+            sendOTP('SMS');
+        }
+
+        function handleResetStep3(e) {
+            e.preventDefault();
+            const entered = document.getElementById('reset-otp-input').value.trim();
+            if (entered === demoOTP) {
+                showToast('OTP verified successfully!', 'success');
+                setResetStep(4);
+            } else {
+                showToast('Invalid OTP Code. Try again.', 'error');
+            }
+        }
+
+        function checkPasswordStrength(pass) {
+            const s1 = document.getElementById('str-1');
+            const s2 = document.getElementById('str-2');
+            const s3 = document.getElementById('str-3');
+            const label = document.getElementById('str-label');
+
+            if (pass.length === 0) {
+                s1.className = s2.className = s3.className = "h-full w-1/3 bg-slate-700";
+                label.innerText = "Weak";
+            } else if (pass.length < 6) {
+                s1.className = "h-full w-1/3 bg-rose-500";
+                s2.className = s3.className = "h-full w-1/3 bg-slate-700";
+                label.innerText = "Weak";
+            } else if (pass.length < 10) {
+                s1.className = s2.className = "h-full w-1/3 bg-amber-500";
+                s3.className = "h-full w-1/3 bg-slate-700";
+                label.innerText = "Medium";
+            } else {
+                s1.className = s2.className = s3.className = "h-full w-1/3 bg-emerald-500";
+                label.innerText = "Strong";
+            }
+        }
+
+        function handleResetStep4(e) {
+            e.preventDefault();
+            const newPass = document.getElementById('reset-new-pass').value;
+            const confirmPass = document.getElementById('reset-confirm-pass').value;
+
+            if (newPass !== confirmPass) {
+                showToast('Passwords do not match!', 'error');
+                return;
+            }
+
+            closeForgotPasswordModal();
+            showToast('Password updated successfully! Auto-signing in...', 'success');
+
+            // Auto Sign-in
+            currentUser = pendingResetUser;
+            setupInterfaceForRole();
+        }
+
+
+        function openGoogleOAuthModal() {
+            document.getElementById('modal-google-oauth').classList.remove('hidden');
+            document.getElementById('modal-google-oauth').classList.add('flex');
+        }
+
+        function closeGoogleOAuthModal() {
+            document.getElementById('modal-google-oauth').classList.add('hidden');
+            document.getElementById('modal-google-oauth').classList.remove('flex');
+        }
+
+        function loginWithGoogleAccount(role) {
+            closeGoogleOAuthModal();
+            if (role === 'admin') {
+                currentUser = { username: 'Prathamesh (Admin)', identifier: 'admin@smartstock.in', role: 'admin' };
+            } else {
+                currentUser = { username: 'Rahul Sharma', identifier: 'rahul.sharma@gmail.com', role: 'user' };
+            }
+            showToast(`Signed in with Google as ${currentUser.username}`, 'success');
+            setupInterfaceForRole();
+        }
+
+
+        function populateCategoryDropdowns() {
+            const adminFilter = document.getElementById('admin-category-filter');
+            const storeFilter = document.getElementById('store-category-filter');
+            const prodCategoryModal = document.getElementById('prod-category');
+
+            let optionsHtml = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+            
+            if (adminFilter) adminFilter.innerHTML = '<option value="All">All Categories</option>' + optionsHtml;
+            if (storeFilter) storeFilter.innerHTML = '<option value="All">All Categories</option>' + optionsHtml;
+            if (prodCategoryModal) prodCategoryModal.innerHTML = optionsHtml;
+        }
+
+        function renderAdminInventory() {
+            const tbody = document.getElementById('admin-inventory-table');
+            const query = document.getElementById('admin-search-input')?.value.toLowerCase() || '';
+            const categoryFilter = document.getElementById('admin-category-filter')?.value || 'All';
+
+            const filtered = inventory.filter(p => {
+                const matchesSearch = p.title.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query);
+                const matchesCat = categoryFilter === 'All' || p.category === categoryFilter;
+                return matchesSearch && matchesCat;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">No matching products found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(item => `
+                <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                    <td class="p-4 flex items-center gap-3">
+                        <img src="${item.image}" class="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700">
+                        <div>
+                            <p class="font-bold text-slate-800 dark:text-slate-100">${item.title}</p>
+                            <span class="text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded">SKU: ${item.sku}</span>
+                        </div>
+                    </td>
+                    <td class="p-4 font-medium text-slate-600 dark:text-slate-300">${item.category}</td>
+                    <td class="p-4 font-extrabold text-slate-900 dark:text-white">₹${item.price.toLocaleString('en-IN')}</td>
+                    <td class="p-4 font-bold text-slate-800 dark:text-slate-200">${item.stock} pcs</td>
+                    <td class="p-4">
+                        ${item.stock <= 5 
+                            ? `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">Low Stock</span>`
+                            : `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">In Stock</span>`}
+                    </td>
+                    <td class="p-4 text-right space-x-2">
+                        <button onclick="editProduct('${item.id}')" class="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteProduct('${item.id}')" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterAdminInventory() {
+            renderAdminInventory();
+        }
+
+        // Product Modal Operations
+        function openProductModal() {
+            document.getElementById('prod-id').value = '';
+            document.getElementById('product-form').reset();
+            document.getElementById('product-modal-title').innerText = 'Add New Product';
+            document.getElementById('prod-img-preview').src = CATEGORY_IMAGES['Electronics'];
+            document.getElementById('modal-product').classList.remove('hidden');
+            document.getElementById('modal-product').classList.add('flex');
+        }
+
+        function closeProductModal() {
+            document.getElementById('modal-product').classList.add('hidden');
+            document.getElementById('modal-product').classList.remove('flex');
+        }
+
+        function handleCategoryChange(cat) {
+            const currentUrl = document.getElementById('prod-image-url').value;
+            if (!currentUrl) {
+                document.getElementById('prod-img-preview').src = CATEGORY_IMAGES[cat] || CATEGORY_IMAGES['Electronics'];
+            }
+        }
+
+        function previewModalImage(url) {
+            if (url) {
+                document.getElementById('prod-img-preview').src = url;
+            } else {
+                const cat = document.getElementById('prod-category').value;
+                document.getElementById('prod-img-preview').src = CATEGORY_IMAGES[cat];
+            }
+        }
+
+        function handleImageFileUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('prod-image-url').value = evt.target.result;
+                    document.getElementById('prod-img-preview').src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveProduct(e) {
+            e.preventDefault();
+            const id = document.getElementById('prod-id').value;
+            const title = document.getElementById('prod-title').value;
+            const category = document.getElementById('prod-category').value;
+            const sku = document.getElementById('prod-sku').value;
+            const price = parseFloat(document.getElementById('prod-price').value);
+            const stock = parseInt(document.getElementById('prod-stock').value);
+            let image = document.getElementById('prod-image-url').value;
+
+            if (!image) {
+                image = CATEGORY_IMAGES[category] || CATEGORY_IMAGES['Electronics'];
+            }
+
+            if (id) {
+                // Edit
+                const index = inventory.findIndex(p => p.id === id);
+                if (index !== -1) {
+                    inventory[index] = { id, title, category, price, stock, sku, image };
+                    showToast('Product updated successfully', 'success');
+                }
+            } else {
+                // Add
+                const newProd = {
+                    id: Date.now().toString(),
+                    title, category, price, stock, sku, image
+                };
+                inventory.push(newProd);
+                showToast('New product added to inventory', 'success');
+            }
+
+            closeProductModal();
+            renderAdminInventory();
+            renderStoreProducts();
+            updateDashboardMetrics();
+        }
+
+        function editProduct(id) {
+            const item = inventory.find(p => p.id === id);
+            if (!item) return;
+
+            document.getElementById('prod-id').value = item.id;
+            document.getElementById('prod-title').value = item.title;
+            document.getElementById('prod-category').value = item.category;
+            document.getElementById('prod-sku').value = item.sku;
+            document.getElementById('prod-price').value = item.price;
+            document.getElementById('prod-stock').value = item.stock;
+            document.getElementById('prod-image-url').value = item.image;
+            document.getElementById('prod-img-preview').src = item.image;
+
+            document.getElementById('product-modal-title').innerText = 'Edit Product';
+            document.getElementById('modal-product').classList.remove('hidden');
+            document.getElementById('modal-product').classList.add('flex');
+        }
+
+        function deleteProduct(id) {
+            if (confirm('Are you sure you want to delete this product?')) {
+                inventory = inventory.filter(p => p.id !== id);
+                renderAdminInventory();
+                renderStoreProducts();
+                updateDashboardMetrics();
+                showToast('Product removed from system', 'info');
+            }
+        }
+
+
+        function renderStoreProducts() {
+            const grid = document.getElementById('store-products-grid');
+            const query = document.getElementById('store-search-input')?.value.toLowerCase() || '';
+            const categoryFilter = document.getElementById('store-category-filter')?.value || 'All';
+
+            const filtered = inventory.filter(p => {
+                const matchesSearch = p.title.toLowerCase().includes(query) || p.category.toLowerCase().includes(query);
+                const matchesCat = categoryFilter === 'All' || p.category === categoryFilter;
+                return matchesSearch && matchesCat;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">No products match your search criteria.</div>`;
+                return;
+            }
+
+            grid.innerHTML = filtered.map(item => `
+                <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg transition">
+                    <div class="relative h-48 overflow-hidden bg-slate-100 dark:bg-slate-800">
+                        <img src="${item.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                        <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-900/80 text-white backdrop-blur-md">
+                            ${item.category}
+                        </span>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-800 dark:text-slate-100 text-base line-clamp-2">${item.title}</h4>
+                            <p class="text-[11px] font-mono text-slate-400 mt-1">SKU: ${item.sku}</p>
+                        </div>
+                        
+                        <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-slate-400 block">Price</span>
+                                <span class="text-lg font-extrabold text-slate-900 dark:text-white">₹${item.price.toLocaleString('en-IN')}</span>
+                            </div>
+
+                            ${item.stock > 0 
+                                ? `<button onclick="addToCart('${item.id}')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-cart-plus"></i> Add
+                                   </button>`
+                                : `<button disabled class="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-400 text-xs font-bold rounded-xl cursor-not-allowed">
+                                    Out of Stock
+                                   </button>`
+                            }
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // AI Visual Search Simulation
+        function triggerAISearch(e) {
+            const banner = document.getElementById('ai-search-banner');
+            const msg = document.getElementById('ai-search-msg');
+            banner.classList.remove('hidden');
+
+            msg.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Analyzing visual features of uploaded image...`;
+
+            setTimeout(() => {
+                msg.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles mr-2 text-purple-400"></i> AI Match Identified: Showing relevant categories and products.`;
+                document.getElementById('store-category-filter').value = 'Watches & Wearables';
+                renderStoreProducts();
+            }, 1200);
+        }
+
+        function clearAISearch() {
+            document.getElementById('ai-search-banner').classList.add('hidden');
+            document.getElementById('store-category-filter').value = 'All';
+            renderStoreProducts();
+        }
+
+
+        function addToCart(prodId) {
+            const item = inventory.find(p => p.id === prodId);
+            if (!item || item.stock <= 0) return;
+
+            const existing = cart.find(c => c.product.id === prodId);
+            if (existing) {
+                if (existing.quantity < item.stock) {
+                    existing.quantity++;
+                    showToast(`Updated quantity for ${item.title}`, 'info');
+                } else {
+                    showToast(`Cannot add more. Reached stock limit (${item.stock})`, 'warning');
+                }
+            } else {
+                cart.push({ product: item, quantity: 1 });
+                showToast(`Added ${item.title} to cart`, 'success');
+            }
+
+            updateCartBadge();
+        }
+
+        function updateCartBadge() {
+            const badge = document.getElementById('cart-badge');
+            const totalItems = cart.reduce((acc, c) => acc + c.quantity, 0);
+            if (totalItems > 0) {
+                badge.innerText = totalItems;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-items-container');
+            if (cart.length === 0) {
+                container.innerHTML = `<div class="bg-white dark:bg-slate-900 p-8 rounded-2xl border text-center text-slate-400">Your shopping cart is empty.</div>`;
+                updateCartTotals();
+                return;
+            }
+
+            container.innerHTML = cart.map(item => `
+                <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <img src="${item.product.image}" class="w-16 h-16 rounded-xl object-cover">
+                        <div>
+                            <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">${item.product.title}</h4>
+                            <p class="text-xs text-slate-500">₹${item.product.price.toLocaleString('en-IN')} each</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+                            <button onclick="changeCartQty('${item.product.id}', -1)" class="w-7 h-7 bg-white dark:bg-slate-700 rounded-lg shadow-sm font-bold text-xs">-</button>
+                            <span class="text-xs font-bold w-6 text-center">${item.quantity}</span>
+                            <button onclick="changeCartQty('${item.product.id}', 1)" class="w-7 h-7 bg-white dark:bg-slate-700 rounded-lg shadow-sm font-bold text-xs">+</button>
+                        </div>
+
+                        <span class="font-extrabold text-sm text-slate-900 dark:text-white w-20 text-right">
+                            ₹${(item.product.price * item.quantity).toLocaleString('en-IN')}
+                        </span>
+
+                        <button onclick="removeFromCart('${item.product.id}')" class="text-rose-500 hover:text-rose-700 p-1">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            updateCartTotals();
+        }
+
+        function changeCartQty(prodId, delta) {
+            const cartItem = cart.find(c => c.product.id === prodId);
+            if (!cartItem) return;
+
+            const newQty = cartItem.quantity + delta;
+            if (newQty <= 0) {
+                removeFromCart(prodId);
+            } else if (newQty <= cartItem.product.stock) {
+                cartItem.quantity = newQty;
+                renderCart();
+                updateCartBadge();
+            } else {
+                showToast(`Stock limit reached (${cartItem.product.stock})`, 'warning');
+            }
+        }
+
+        function removeFromCart(prodId) {
+            cart = cart.filter(c => c.product.id !== prodId);
+            renderCart();
+            updateCartBadge();
+        }
+
+        function updateCartTotals() {
+            const subtotal = cart.reduce((sum, c) => sum + (c.product.price * c.quantity), 0);
+            const tax = subtotal * 0.18;
+            const total = subtotal + tax;
+
+            document.getElementById('summary-subtotal').innerText = `₹${subtotal.toLocaleString('en-IN')}`;
+            document.getElementById('summary-tax').innerText = `₹${Math.round(tax).toLocaleString('en-IN')}`;
+            document.getElementById('summary-total').innerText = `₹${Math.round(total).toLocaleString('en-IN')}`;
+        }
+
+        // UPI Payment Modal & QR Generation
+        function initiateUPICheckout() {
+            if (cart.length === 0) {
+                showToast('Your cart is empty', 'warning');
+                return;
+            }
+
+            const name = document.getElementById('checkout-name').value.trim();
+            const phone = document.getElementById('checkout-phone').value.trim();
+            const address = document.getElementById('checkout-address').value.trim();
+
+            if (!name || !phone || !address) {
+                showToast('Please fill all delivery details', 'warning');
+                return;
+            }
+
+            const subtotal = cart.reduce((sum, c) => sum + (c.product.price * c.quantity), 0);
+            const total = Math.round(subtotal * 1.18);
+
+            pendingCheckoutData = { name, phone, address, total, items: [...cart] };
+
+            document.getElementById('upi-modal-amount').innerText = `₹${total.toLocaleString('en-IN')}`;
+
+            // Generate UPI QR Code
+            const qrContainer = document.getElementById('qrcode-canvas');
+            qrContainer.innerHTML = '';
+            
+            const upiString = `upi://pay?pa=phutaneprathamesh829@oksbi&pn=SmartStock&am=${total}&cu=INR`;
+            
+            new QRCode(qrContainer, {
+                text: upiString,
+                width: 180,
+                height: 180,
+                colorDark : "#1e1b4b",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+
+            document.getElementById('modal-upi-payment').classList.remove('hidden');
+            document.getElementById('modal-upi-payment').classList.add('flex');
+        }
+
+        function closeUPIModal() {
+            document.getElementById('modal-upi-payment').classList.add('hidden');
+            document.getElementById('modal-upi-payment').classList.remove('flex');
+        }
+
+        function simulateSuccessfulUPIPayment() {
+            if (!pendingCheckoutData) return;
+
+            // Auto-deduct inventory stock
+            pendingCheckoutData.items.forEach(cItem => {
+                const p = inventory.find(i => i.id === cItem.product.id);
+                if (p) p.stock -= cItem.quantity;
+            });
+
+            const newOrder = {
+                id: 'ORD-' + Math.floor(100000 + Math.random() * 900000),
+                date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+                items: pendingCheckoutData.items,
+                total: pendingCheckoutData.total,
+                customer: pendingCheckoutData,
+                status: 'Paid via UPI'
+            };
+
+            orders.unshift(newOrder);
+
+            // Clear Cart
+            cart = [];
+            updateCartBadge();
+            renderCart();
+
+            closeUPIModal();
+            renderAdminInventory();
+            renderStoreProducts();
+            updateDashboardMetrics();
+
+            showToast('UPI Payment Verified! Invoice generated.', 'success');
+            openInvoiceModal(newOrder);
+        }
+
+
+        function openInvoiceModal(order) {
+            const container = document.getElementById('invoice-content');
+            
+            container.innerHTML = `
+                <div class="flex justify-between items-start border-b pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-indigo-600">SmartStock AI</h2>
+                        <p class="text-slate-500">Official Sales Tax Invoice</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-slate-800">${order.id}</p>
+                        <p class="text-slate-500">${order.date}</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 my-4">
+                    <div>
+                        <p class="font-semibold text-slate-400 uppercase text-[10px]">Customer Details</p>
+                        <p class="font-bold text-slate-800">${order.customer.name}</p>
+                        <p class="text-slate-600">${order.customer.phone}</p>
+                        <p class="text-slate-600">${order.customer.address}</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-400 uppercase text-[10px]">Payment Info</p>
+                        <p class="font-bold text-emerald-600">${order.status}</p>
+                        <p class="text-slate-600 font-mono">UPI ID: phutaneprathamesh829@oksbi</p>
+                    </div>
+                </div>
+
+                <table class="w-full text-left my-4 border-t border-b">
+                    <thead>
+                        <tr class="text-slate-400 uppercase text-[10px] border-b">
+                            <th class="py-2">Item</th>
+                            <th class="py-2">Qty</th>
+                            <th class="py-2 text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        ${order.items.map(i => `
+                            <tr>
+                                <td class="py-2 font-bold">${i.product.title}</td>
+                                <td class="py-2">${i.quantity}</td>
+                                <td class="py-2 text-right">₹${(i.product.price * i.quantity).toLocaleString('en-IN')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <div class="text-right space-y-1">
+                    <p class="text-base font-extrabold text-slate-900">Total Paid: ₹${order.total.toLocaleString('en-IN')}</p>
+                </div>
+            `;
+
+            document.getElementById('modal-invoice').classList.remove('hidden');
+            document.getElementById('modal-invoice').classList.add('flex');
+        }
+
+        function closeInvoiceModal() {
+            document.getElementById('modal-invoice').classList.add('hidden');
+            document.getElementById('modal-invoice').classList.remove('flex');
+        }
+
+        function renderOrderHistory() {
+            const container = document.getElementById('orders-history-list');
+            if (orders.length === 0) {
+                container.innerHTML = `<div class="bg-white dark:bg-slate-900 p-8 rounded-2xl border text-center text-slate-400">No past orders found.</div>`;
+                return;
+            }
+
+            container.innerHTML = orders.map(ord => `
+                <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-800 dark:text-slate-100">${ord.id}</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-500">${ord.status}</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">${ord.date} • ${ord.items.length} item(s)</p>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <span class="font-extrabold text-slate-900 dark:text-white">₹${ord.total.toLocaleString('en-IN')}</span>
+                        <button onclick='openInvoiceModal(${JSON.stringify(ord)})' class="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-xs font-bold rounded-xl hover:bg-slate-200">
+                            Invoice
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+
+        let categoryChartInstance = null;
+
+        function updateDashboardMetrics() {
+            const totalVal = inventory.reduce((sum, item) => sum + (item.price * item.stock), 0);
+            const totalProducts = inventory.length;
+            const lowStockCount = inventory.filter(i => i.stock <= 5).length;
+            const totalSalesVal = orders.reduce((sum, o) => sum + o.total, 0);
+
+            document.getElementById('dash-total-value').innerText = `₹${totalVal.toLocaleString('en-IN')}`;
+            document.getElementById('dash-total-products').innerText = totalProducts;
+            document.getElementById('dash-low-stock').innerText = lowStockCount;
+            document.getElementById('dash-total-sales').innerText = `₹${totalSalesVal.toLocaleString('en-IN')}`;
+
+            // Render Low Stock list
+            const lowStockList = document.getElementById('dash-low-stock-list');
+            const criticalItems = inventory.filter(i => i.stock <= 5);
+            
+            if (criticalItems.length === 0) {
+                lowStockList.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">All stock levels healthy!</p>`;
+            } else {
+                lowStockList.innerHTML = criticalItems.map(i => `
+                    <div class="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-slate-800 dark:text-slate-100">${i.title}</p>
+                            <p class="text-[10px] text-slate-400">SKU: ${i.sku}</p>
+                        </div>
+                        <span class="px-2 py-1 bg-amber-500/10 text-amber-600 font-bold text-xs rounded-lg">${i.stock} left</span>
+                    </div>
+                `).join('');
+            }
+
+            // Chart Render
+            renderCategoryChart();
+        }
+
+        function renderCategoryChart() {
+            const ctx = document.getElementById('chart-category-stock')?.getContext('2d');
+            if (!ctx) return;
+
+            const categoryCounts = {};
+            CATEGORIES.forEach(c => categoryCounts[c] = 0);
+            inventory.forEach(i => {
+                if (categoryCounts[i.category] !== undefined) {
+                    categoryCounts[i.category] += i.stock;
+                }
+            });
+
+            if (categoryChartInstance) {
+                categoryChartInstance.destroy();
+            }
+
+            categoryChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: CATEGORIES.map(c => c.length > 12 ? c.substring(0, 10) + '...' : c),
+                    datasets: [{
+                        label: 'Units in Stock',
+                        data: Object.values(categoryCounts),
+                        backgroundColor: '#6366f1',
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // Dark Mode Toggle
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            const icon = document.getElementById('theme-icon');
+            if (document.documentElement.classList.contains('dark')) {
+                icon.className = "fa-solid fa-sun text-lg text-amber-400";
+            } else {
+                icon.className = "fa-solid fa-moon text-lg";
+            }
+        }
+    </script>
+</body>
+</html>
