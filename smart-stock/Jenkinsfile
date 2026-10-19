@@ -1,0 +1,14 @@
+// Mirror of root-level declarative pipeline for sub-directory compatibility
+pipeline {
+    agent any
+    stages {
+        stage('Delegate to Root Pipeline') {
+            steps {
+                script {
+                    echo "Please execute the root-level Jenkinsfile located at repository root."
+                    sh 'cat ../Jenkinsfile || cat Jenkinsfile'
+                }
+            }
+        }
+    }
+}

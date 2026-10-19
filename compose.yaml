@@ -1,0 +1,70 @@
+services:
+  smartstock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smartstock-app:local
+    container_name: smartstock-container
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-8080}:80"
+
+    environment:
+      APP_ENV: "${APP_ENV:-production}"
+      APP_NAME: "${APP_NAME:-SmartStock AI}"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - smartstock-network
+
+  smartstock-dev:
+    profiles:
+      - dev
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smartstock-app:dev
+    container_name: smartstock-dev-container
+    restart: unless-stopped
+
+    ports:
+      - "8081:80"
+
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+    environment:
+      APP_ENV: development
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    networks:
+      - smartstock-network
+
+networks:
+  smartstock-network:
+    driver: bridge

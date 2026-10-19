@@ -1,0 +1,26 @@
+{
+  "name": "smartstock-ai",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SmartStock AI - Enterprise Inventory & POS Management System with DevOps Pipeline",
+  "main": "index.html",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "lint": "node tests/lint.js",
+    "ci": "npm run lint && npm test"
+  },
+  "keywords": [
+    "inventory",
+    "pos",
+    "docker",
+    "devops",
+    "jenkins",
+    "ci-cd",
+    "jira"
+  ],
+  "author": "Prathamesh Phutane <phutaneprathamesh829@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

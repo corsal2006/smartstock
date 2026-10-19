@@ -1,0 +1,33 @@
+# Git and CI/CD metadata
+.git
+.gitignore
+.github
+.jenkins
+*@tmp
+*@temp
+
+# Documentation and design
+docs
+README.md
+
+# Testing & local dev files
+tests
+coverage
+node_modules
+npm-debug.log*
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+
+# Docker Compose files
+compose.yaml
+docker-compose*.yml
