@@ -20,7 +20,7 @@ pipeline {
         choice(
             name: 'ENVIRONMENT',
             choices: ['development', 'staging', 'production'],
-            description: 'Target deployment environment'
+            description: 'Target environment'
         )
 
         string(
@@ -32,13 +32,13 @@ pipeline {
         string(
             name: 'IMAGE_NAME',
             defaultValue: 'corsal2006/smartstock',
-            description: 'Docker image repository'
+            description: 'Docker Hub namespace/image; change if needed'
         )
 
         booleanParam(
             name: 'PUBLISH_IMAGE',
             defaultValue: false,
-            description: 'Push the image to Docker Hub'
+            description: 'Publish the image to Docker Hub'
         )
 
         booleanParam(
@@ -50,7 +50,7 @@ pipeline {
         booleanParam(
             name: 'RUN_TRIVY',
             defaultValue: false,
-            description: 'Run a Trivy image vulnerability scan'
+            description: 'Run a Trivy vulnerability scan'
         )
     }
 
@@ -96,7 +96,7 @@ pipeline {
                         env.JIRA_ISSUE_KEY = matcher.group(1)
                         echo "Detected Jira issue: ${env.JIRA_ISSUE_KEY}"
                     } else {
-                        echo 'No SMAR issue key found in branch or commit.'
+                        echo 'No SMAR issue key detected.'
                     }
 
                     echo "Commit: ${env.GIT_SHORT_COMMIT}"
@@ -116,7 +116,7 @@ pipeline {
                     test -f nginx.conf
                     test -f Jenkinsfile
 
-                    echo "Project files validated."
+                    echo "Required project files are present."
                 '''
             }
         }
@@ -137,7 +137,7 @@ pipeline {
                     docker --version
                     docker info >/dev/null
 
-                    echo "Required tools are available."
+                    echo "Build tools are available."
                 '''
             }
         }
@@ -146,7 +146,13 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    npm ci
+
+                    if [ -f package-lock.json ]; then
+                        npm ci
+                    else
+                        echo "No package-lock.json found; using npm install."
+                        npm install
+                    fi
                 '''
             }
         }
@@ -190,7 +196,7 @@ pipeline {
                     set -eu
 
                     if ! command -v trivy >/dev/null 2>&1; then
-                        echo "Trivy is not installed on the Jenkins agent."
+                        echo "Trivy is not installed on this Jenkins agent."
                         exit 1
                     fi
 
@@ -225,15 +231,15 @@ pipeline {
 
                         docker push "$FULL_IMAGE_NAME:$IMAGE_TAG"
                         docker push "$FULL_IMAGE_NAME:$ENVIRONMENT-latest"
-
-                        docker logout "$REGISTRY"
                     '''
                 }
             }
 
             post {
                 always {
-                    sh 'docker logout "$REGISTRY" >/dev/null 2>&1 || true'
+                    sh '''
+                        docker logout "$REGISTRY" >/dev/null 2>&1 || true
+                    '''
                 }
             }
         }
@@ -247,8 +253,8 @@ pipeline {
                 sh '''
                     set -eu
 
-                    # Use a dedicated container and port.
-                    # Do not replace the existing SmartStock container.
+                    # This uses a dedicated container and port.
+                    # It does not replace the existing SmartStock container.
 
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
@@ -289,14 +295,15 @@ pipeline {
                             break
                         }
 
-                        echo "Attempt ${attempt}: HTTP ${status}"
+                        echo "Health check attempt ${attempt}: HTTP ${status}"
                     }
 
                     if (!healthy) {
                         sh '''
                             docker logs --tail 50 "$CONTAINER_NAME" || true
                         '''
-                        error('Test deployment health check failed.')
+
+                        error('Test deployment verification failed.')
                     }
                 }
             }
@@ -304,17 +311,22 @@ pipeline {
 
         stage('Jira Build Information') {
             steps {
-                echo "Jenkins build: #${env.BUILD_NUMBER}"
-                echo "Git commit: ${env.GIT_SHORT_COMMIT}"
-                echo "Image tag: ${env.IMAGE_TAG}"
-                echo "Jira project key: ${env.JIRA_PROJECT_KEY}"
+                script {
+                    echo "Jenkins build: #${env.BUILD_NUMBER}"
+                    echo "Git commit: ${env.GIT_SHORT_COMMIT}"
+                    echo "Image tag: ${env.IMAGE_TAG}"
+                    echo "Jira project: ${env.JIRA_PROJECT_KEY}"
 
-                if (env.JIRA_ISSUE_KEY) {
-                    echo "Related Jira issue: ${env.JIRA_ISSUE_KEY}"
+                    if (env.JIRA_ISSUE_KEY != null &&
+                        !env.JIRA_ISSUE_KEY.trim().isEmpty()) {
+                        echo "Related Jira issue: ${env.JIRA_ISSUE_KEY}"
+                    } else {
+                        echo 'No related Jira issue detected.'
+                    }
+
+                    echo 'Jira development linking is handled by the GitHub integration.'
+                    echo 'This stage does not send a Jira REST API request.'
                 }
-
-                echo 'Jira issue updates are not sent by this stage.'
-                echo 'GitHub/Jira development linking remains separate.'
             }
         }
     }
@@ -325,7 +337,7 @@ pipeline {
         }
 
         failure {
-            echo 'FAILURE: Check Console Output for the failing stage.'
+            echo 'FAILURE: Check Console Output for the failed stage.'
         }
 
         always {
