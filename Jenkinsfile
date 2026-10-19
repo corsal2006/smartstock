@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -36,20 +37,20 @@ pipeline {
 
         booleanParam(
             name: 'PUBLISH_IMAGE',
-            defaultValue: false,
+            defaultValue: true,
             description: 'Publish the image to Docker Hub'
         )
 
         booleanParam(
             name: 'DEPLOY_LOCAL',
-            defaultValue: false,
+            defaultValue: true,
             description: 'Deploy a separate test container on port 8081'
         )
 
         booleanParam(
             name: 'RUN_TRIVY',
             defaultValue: false,
-            description: 'Run a Trivy vulnerability scan'
+            description: 'Run Trivy security scanning; requires Trivy installed'
         )
     }
 
@@ -61,44 +62,48 @@ pipeline {
         DEPLOY_PORT       = '8081'
     }
 
-    
-stage('Verify Test Deployment') {
-    steps {
-        script {
-            sh '''
-                set -eu
+    stages {
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
 
-                TEST_CONTAINER="smartstock-jenkins-test"
-                TEST_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$TEST_CONTAINER")"
+                script {
+                    env.GIT_SHORT_COMMIT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
 
-                if [ -z "$TEST_IP" ]; then
-                    echo "ERROR: Could not determine test container IP."
-                    docker ps -a
-                    exit 1
-                fi
+                    env.IMAGE_TAG =
+                        "${params.ENVIRONMENT}-${env.BUILD_NUMBER}-${env.GIT_SHORT_COMMIT}"
 
-                echo "Testing SmartStock at http://${TEST_IP}/"
+                    env.FULL_IMAGE_NAME =
+                        "${params.REGISTRY}/${params.IMAGE_NAME}"
 
-                for attempt in $(seq 1 10); do
-                    STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "http://${TEST_IP}/" || true)"
-                    echo "Health check attempt ${attempt}: HTTP ${STATUS}"
+                    def commitMessage = sh(
+                        script: 'git log -1 --pretty=%B',
+                        returnStdout: true
+                    ).trim()
 
-                    if [ "$STATUS" = "200" ]; then
-                        echo "SmartStock test deployment verified successfully."
-                        exit 0
-                    fi
+                    def branchName =
+                        env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
 
-                    sleep 2
-                done
+                    def matcher =
+                        (branchName + ' ' + commitMessage) =~ /(SMAR-\d+)/
 
-                echo "ERROR: Test deployment did not return HTTP 200."
-                docker logs --tail 50 "$TEST_CONTAINER" || true
-                exit 1
-            '''
+                    env.JIRA_ISSUE_KEY = ''
+
+                    if (matcher.find()) {
+                        env.JIRA_ISSUE_KEY = matcher.group(1)
+                        echo "Detected Jira issue: ${env.JIRA_ISSUE_KEY}"
+                    } else {
+                        echo 'No SMAR issue key detected.'
+                    }
+
+                    echo "Commit: ${env.GIT_SHORT_COMMIT}"
+                    echo "Image: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
+                }
+            }
         }
-    }
-}
-
 
         stage('Validate Project') {
             steps {
@@ -121,14 +126,9 @@ stage('Verify Test Deployment') {
                 sh '''
                     set -eu
 
-                    echo "Checking Node.js..."
                     node --version
                     npm --version
-
-                    echo "Checking Git..."
                     git --version
-
-                    echo "Checking Docker..."
                     docker --version
                     docker info >/dev/null
 
@@ -226,6 +226,8 @@ stage('Verify Test Deployment') {
 
                         docker push "$FULL_IMAGE_NAME:$IMAGE_TAG"
                         docker push "$FULL_IMAGE_NAME:$ENVIRONMENT-latest"
+
+                        echo "Docker image published successfully."
                     '''
                 }
             }
@@ -248,8 +250,8 @@ stage('Verify Test Deployment') {
                 sh '''
                     set -eu
 
-                    # Uses a separate test container.
-                    # Does not replace the existing SmartStock container.
+                    # Use a dedicated test container.
+                    # Do not stop or replace the existing app container.
 
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
@@ -259,6 +261,9 @@ stage('Verify Test Deployment') {
                       -p "${DEPLOY_PORT}:80" \
                       -e APP_ENV="$ENVIRONMENT" \
                       "$FULL_IMAGE_NAME:$IMAGE_TAG"
+
+                    echo "Test container started."
+                    docker ps --filter "name=$CONTAINER_NAME"
                 '''
             }
         }
@@ -275,26 +280,45 @@ stage('Verify Test Deployment') {
                     for (int attempt = 1; attempt <= 10; attempt++) {
                         sleep(time: 2, unit: 'SECONDS')
 
-                        def status = sh(
+                        def running = sh(
                             script: '''
-                                curl -sS -o /dev/null \
-                                  -w '%{http_code}' \
-                                  http://localhost:8081/ || true
+                                docker inspect \
+                                  --format '{{.State.Running}}' \
+                                  "$CONTAINER_NAME" 2>/dev/null || true
                             ''',
                             returnStdout: true
                         ).trim()
 
-                        if (status == '200') {
-                            healthy = true
-                            echo 'Test deployment returned HTTP 200.'
-                            break
-                        }
+                        if (running == 'true') {
+                            def status = sh(
+                                script: '''
+                                    docker exec "$CONTAINER_NAME" \
+                                      wget -q -O /dev/null \
+                                      http://127.0.0.1/ \
+                                      >/dev/null 2>&1 \
+                                      && echo 200 || echo 000
+                                ''',
+                                returnStdout: true
+                            ).trim()
 
-                        echo "Health check attempt ${attempt}: HTTP ${status}"
+                            echo "Health check attempt ${attempt}: HTTP ${status}"
+
+                            if (status == '200') {
+                                healthy = true
+                                echo 'Test deployment verified successfully.'
+                                break
+                            }
+                        } else {
+                            echo "Test container is not running (attempt ${attempt})."
+                        }
                     }
 
                     if (!healthy) {
                         sh '''
+                            echo "Container status:"
+                            docker ps -a --filter "name=$CONTAINER_NAME"
+
+                            echo "Container logs:"
                             docker logs --tail 50 "$CONTAINER_NAME" || true
                         '''
 
@@ -319,8 +343,8 @@ stage('Verify Test Deployment') {
                         echo 'No related Jira issue detected.'
                     }
 
-                    echo 'Jira development linking is handled by the GitHub integration.'
-                    echo 'This stage does not send a Jira REST API request.'
+                    echo 'GitHub for Atlassian handles development linking.'
+                    echo 'This stage reports build information; it does not call the Jira REST API.'
                 }
             }
         }
@@ -332,7 +356,7 @@ stage('Verify Test Deployment') {
         }
 
         failure {
-            echo 'FAILURE: Check Console Output for the failed stage.'
+            echo 'FAILURE: Review Console Output for the failed stage.'
         }
 
         always {
