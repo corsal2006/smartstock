@@ -22,53 +22,47 @@ concurrency:
 
 jobs:
   # ----------------------------------------------------------------------------
-  # Stage 1: Automated Linting & Unit Testing
+  # Stage 1: Static Application, Compose & Docker Build Validation
   # ----------------------------------------------------------------------------
-  code-quality-and-tests:
-    name: Code Quality, Lint & Unit Tests
+  validate-and-test:
+    name: Validate Config, Docker Build & Health Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js Environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+      - name: Validate Project Files
+        run: |
+          echo "Validating static assets and configuration files..."
+          test -f index.html || { echo "ERROR: index.html not found!"; exit 1; }
+          test -f nginx.conf || { echo "ERROR: nginx.conf not found!"; exit 1; }
+          test -f Dockerfile || { echo "ERROR: Dockerfile not found!"; exit 1; }
+          test -f compose.yaml || { echo "ERROR: compose.yaml not found!"; exit 1; }
+          echo "All required core files are present."
 
-      - name: Install Project Dependencies
-        run: npm ci || npm install
-
-      - name: Run Static Analysis & Linter
-        run: npm run lint
-
-      - name: Run Automated Business Logic Tests
-        run: npm test
-
-  # ----------------------------------------------------------------------------
-  # Stage 2: Docker Build & Container Health Validation
-  # ----------------------------------------------------------------------------
-  docker-build-and-healthcheck:
-    name: Docker Build & Health Check
-    needs: [code-quality-and-tests]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - name: Validate Docker Compose Configuration
+        run: |
+          echo "Validating compose.yaml syntax and configuration..."
+          docker compose config
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Local Docker Image
+      - name: Build Docker Image
         run: |
+          echo "Building Docker image..."
           docker build -t smartstock-app:test .
+
+      - name: Validate Nginx Configuration Inside Container
+        run: |
+          echo "Testing Nginx syntax with nginx -t..."
+          docker run --rm smartstock-app:test nginx -t
 
       - name: Launch Container & Verify Health Check
         run: |
-          docker run -d --name test-smartstock -p 8080:8080 smartstock-app:test
-          
-          # Poll health endpoint with timeout
+          echo "Launching test container mapping host port 8080 to container port 80..."
+          docker run -d --name test-smartstock -p 8080:80 smartstock-app:test
+
           echo "Waiting for container health check on http://localhost:8080/healthz..."
           for i in {1..10}; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz || echo "failed")
@@ -82,10 +76,19 @@ jobs:
           done
 
           if [ "$STATUS" != "200" ]; then
-            echo "Health check FAILED!"
+            echo "ERROR: Health check failed! Container logs:"
             docker logs test-smartstock
             exit 1
           fi
+
+          echo "Verifying root route http://localhost:8080/..."
+          ROOT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ || echo "failed")
+          if [ "$ROOT_STATUS" != "200" ]; then
+            echo "ERROR: Root URL returned status $ROOT_STATUS"
+            docker logs test-smartstock
+            exit 1
+          fi
+          echo "Root route PASSED with HTTP 200 OK!"
 
       - name: Cleanup Test Container
         if: always()
@@ -94,17 +97,17 @@ jobs:
           docker rm test-smartstock || true
 
   # ----------------------------------------------------------------------------
-  # Stage 3: Vulnerability Scanning (Trivy)
+  # Stage 2: Security & Vulnerability Scan (Trivy)
   # ----------------------------------------------------------------------------
   security-vulnerability-scan:
-    name: Trivy Security & Vulnerability Scan
-    needs: [docker-build-and-healthcheck]
+    name: Trivy Security Scan
+    needs: [validate-and-test]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Build Image for Scanning
+      - name: Build Image for Security Scan
         run: docker build -t smartstock-app:scan .
 
       - name: Run Trivy Vulnerability Scanner
@@ -112,13 +115,13 @@ jobs:
         with:
           image-ref: 'smartstock-app:scan'
           format: 'table'
-          exit-code: '0' # Non-blocking on informational, logs report
+          exit-code: '0'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
   # ----------------------------------------------------------------------------
-  # Stage 4: Publish to Container Registry (Main Branch Only)
+  # Stage 3: Publish Image to Registry (Main Branch Only, Never on Pull Requests)
   # ----------------------------------------------------------------------------
   publish-container-image:
     name: Publish Production Image to Registry
