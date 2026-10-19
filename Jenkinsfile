@@ -2,6 +2,10 @@
 pipeline {
     agent any
 
+    tools {
+        nodejs 'NodeJS-22'
+    }
+
     options {
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(
@@ -16,7 +20,7 @@ pipeline {
         choice(
             name: 'ENVIRONMENT',
             choices: ['development', 'staging', 'production'],
-            description: 'Target environment'
+            description: 'Target deployment environment'
         )
 
         string(
@@ -28,35 +32,33 @@ pipeline {
         string(
             name: 'IMAGE_NAME',
             defaultValue: 'corsal2006/smartstock',
-            description: 'Docker Hub namespace/image; change if needed'
+            description: 'Docker image repository'
         )
 
         booleanParam(
             name: 'PUBLISH_IMAGE',
             defaultValue: false,
-            description: 'Push the image to the container registry'
+            description: 'Push the image to Docker Hub'
         )
 
         booleanParam(
             name: 'DEPLOY_LOCAL',
             defaultValue: false,
-            description: 'Deploy a separate local container on port 8081'
+            description: 'Deploy a separate test container on port 8081'
         )
 
         booleanParam(
             name: 'RUN_TRIVY',
             defaultValue: false,
-            description: 'Run a Trivy image security scan if available'
+            description: 'Run a Trivy image vulnerability scan'
         )
     }
 
     environment {
-        APP_NAME          = 'smartstock-ai'
-        CONTAINER_NAME    = 'smartstock-jenkins-deploy'
         REGISTRY_CREDS_ID = 'docker-registry-credentials'
-        JIRA_CREDS_ID     = 'jira-api-credentials'
         JIRA_BASE_URL     = 'https://siddeshnaik292006.atlassian.net'
         JIRA_PROJECT_KEY  = 'SMAR'
+        CONTAINER_NAME    = 'smartstock-jenkins-test'
         DEPLOY_PORT       = '8081'
     }
 
@@ -82,20 +84,23 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
-                    def issueMatcher =
+                    def branchName =
+                        env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+
+                    def matcher =
                         (branchName + ' ' + commitMessage) =~ /(SMAR-\d+)/
 
-                    if (issueMatcher.find()) {
-                        env.JIRA_ISSUE_KEY = issueMatcher.group(1)
-                        echo "Jira issue detected: ${env.JIRA_ISSUE_KEY}"
+                    env.JIRA_ISSUE_KEY = ''
+
+                    if (matcher.find()) {
+                        env.JIRA_ISSUE_KEY = matcher.group(1)
+                        echo "Detected Jira issue: ${env.JIRA_ISSUE_KEY}"
                     } else {
-                        env.JIRA_ISSUE_KEY = ''
-                        echo 'No SMAR issue key found in branch or commit message.'
+                        echo 'No SMAR issue key found in branch or commit.'
                     }
 
                     echo "Commit: ${env.GIT_SHORT_COMMIT}"
-                    echo "Image tag: ${env.IMAGE_TAG}"
+                    echo "Image: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
                 }
             }
         }
@@ -105,13 +110,13 @@ pipeline {
                 sh '''
                     set -eu
 
-                    test -f index.html
                     test -f package.json
+                    test -f index.html
                     test -f Dockerfile
                     test -f nginx.conf
                     test -f Jenkinsfile
 
-                    echo "Required SmartStock files are present."
+                    echo "Project files validated."
                 '''
             }
         }
@@ -121,12 +126,27 @@ pipeline {
                 sh '''
                     set -eu
 
+                    echo "Checking Node.js..."
                     node --version
                     npm --version
+
+                    echo "Checking Git..."
+                    git --version
+
+                    echo "Checking Docker..."
                     docker --version
                     docker info >/dev/null
 
-                    echo "Node.js and Docker are available."
+                    echo "Required tools are available."
+                '''
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    set -eu
+                    npm ci
                 '''
             }
         }
@@ -139,7 +159,7 @@ pipeline {
                     npm run lint
                     npm test
 
-                    echo "Linting and unit tests passed."
+                    echo "Lint and unit tests passed."
                 '''
             }
         }
@@ -169,16 +189,15 @@ pipeline {
                 sh '''
                     set -eu
 
-                    if command -v trivy >/dev/null 2>&1; then
-                        trivy image \
-                          --severity HIGH,CRITICAL \
-                          --exit-code 1 \
-                          "$FULL_IMAGE_NAME:$IMAGE_TAG"
-                    else
-                        echo "Trivy is not installed on this Jenkins agent."
-                        echo "Install Trivy or disable RUN_TRIVY."
+                    if ! command -v trivy >/dev/null 2>&1; then
+                        echo "Trivy is not installed on the Jenkins agent."
                         exit 1
                     fi
+
+                    trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      "$FULL_IMAGE_NAME:$IMAGE_TAG"
                 '''
             }
         }
@@ -211,9 +230,15 @@ pipeline {
                     '''
                 }
             }
+
+            post {
+                always {
+                    sh 'docker logout "$REGISTRY" >/dev/null 2>&1 || true'
+                }
+            }
         }
 
-        stage('Deploy Separate Local Container') {
+        stage('Deploy Separate Test Container') {
             when {
                 expression { params.DEPLOY_LOCAL }
             }
@@ -222,22 +247,22 @@ pipeline {
                 sh '''
                     set -eu
 
-                    # This uses a dedicated container name and port.
-                    # It does not replace the existing SmartStock container.
+                    # Use a dedicated container and port.
+                    # Do not replace the existing SmartStock container.
 
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
                     docker run -d \
                       --name "$CONTAINER_NAME" \
                       --restart unless-stopped \
-                      -p "${DEPLOY_PORT}:8080" \
+                      -p "${DEPLOY_PORT}:80" \
                       -e APP_ENV="$ENVIRONMENT" \
                       "$FULL_IMAGE_NAME:$IMAGE_TAG"
                 '''
             }
         }
 
-        stage('Verify Local Deployment') {
+        stage('Verify Test Deployment') {
             when {
                 expression { params.DEPLOY_LOCAL }
             }
@@ -250,64 +275,61 @@ pipeline {
                         sleep(time: 2, unit: 'SECONDS')
 
                         def status = sh(
-                            script: """
+                            script: '''
                                 curl -sS -o /dev/null \
                                   -w '%{http_code}' \
-                                  http://localhost:${env.DEPLOY_PORT}/healthz \
-                                  || true
-                            """,
+                                  http://localhost:8081/ || true
+                            ''',
                             returnStdout: true
                         ).trim()
 
                         if (status == '200') {
                             healthy = true
-                            echo 'SmartStock health check passed.'
+                            echo 'Test deployment returned HTTP 200.'
                             break
                         }
 
-                        echo "Health check attempt ${attempt}: HTTP ${status}"
+                        echo "Attempt ${attempt}: HTTP ${status}"
                     }
 
                     if (!healthy) {
-                        sh 'docker logs --tail 50 "$CONTAINER_NAME" || true'
-                        error('Deployment health check failed.')
+                        sh '''
+                            docker logs --tail 50 "$CONTAINER_NAME" || true
+                        '''
+                        error('Test deployment health check failed.')
                     }
                 }
             }
         }
 
-        stage('Jira Build Notification') {
-            when {
-                expression {
-                    return env.JIRA_ISSUE_KEY &&
-                           env.JIRA_ISSUE_KEY.trim() != ''
-                }
-            }
-
+        stage('Jira Build Information') {
             steps {
-                echo """
-                    Jira issue: ${env.JIRA_ISSUE_KEY}
-                    Jenkins build: ${env.BUILD_NUMBER}
-                    Result: pipeline reached Jira notification stage
-                """
+                echo "Jenkins build: #${env.BUILD_NUMBER}"
+                echo "Git commit: ${env.GIT_SHORT_COMMIT}"
+                echo "Image tag: ${env.IMAGE_TAG}"
+                echo "Jira project key: ${env.JIRA_PROJECT_KEY}"
 
-                echo 'Jira/GitHub development linking remains enabled.'
-                echo 'Direct Jira REST updates can be added after credentials are configured.'
+                if (env.JIRA_ISSUE_KEY) {
+                    echo "Related Jira issue: ${env.JIRA_ISSUE_KEY}"
+                }
+
+                echo 'Jira issue updates are not sent by this stage.'
+                echo 'GitHub/Jira development linking remains separate.'
             }
         }
     }
 
     post {
         success {
-            echo 'SmartStock Jenkins pipeline completed successfully.'
+            echo 'SUCCESS: SmartStock Jenkins pipeline completed.'
         }
 
         failure {
-            echo 'SmartStock Jenkins pipeline failed. Review Console Output.'
+            echo 'FAILURE: Check Console Output for the failing stage.'
         }
 
         always {
-            echo "Build #${env.BUILD_NUMBER} finished: ${currentBuild.currentResult}"
+            echo "Build #${env.BUILD_NUMBER}: ${currentBuild.currentResult}"
         }
     }
 }
