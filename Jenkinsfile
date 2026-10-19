@@ -61,48 +61,44 @@ pipeline {
         DEPLOY_PORT       = '8081'
     }
 
-    stages {
-        stage('Checkout SCM') {
-            steps {
-                checkout scm
+    
+stage('Verify Test Deployment') {
+    steps {
+        script {
+            sh '''
+                set -eu
 
-                script {
-                    env.GIT_SHORT_COMMIT = sh(
-                        script: 'git rev-parse --short HEAD',
-                        returnStdout: true
-                    ).trim()
+                TEST_CONTAINER="smartstock-jenkins-test"
+                TEST_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$TEST_CONTAINER")"
 
-                    env.IMAGE_TAG =
-                        "${params.ENVIRONMENT}-${env.BUILD_NUMBER}-${env.GIT_SHORT_COMMIT}"
+                if [ -z "$TEST_IP" ]; then
+                    echo "ERROR: Could not determine test container IP."
+                    docker ps -a
+                    exit 1
+                fi
 
-                    env.FULL_IMAGE_NAME =
-                        "${params.REGISTRY}/${params.IMAGE_NAME}"
+                echo "Testing SmartStock at http://${TEST_IP}/"
 
-                    def commitMessage = sh(
-                        script: 'git log -1 --pretty=%B',
-                        returnStdout: true
-                    ).trim()
+                for attempt in $(seq 1 10); do
+                    STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "http://${TEST_IP}/" || true)"
+                    echo "Health check attempt ${attempt}: HTTP ${STATUS}"
 
-                    def branchName =
-                        env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    if [ "$STATUS" = "200" ]; then
+                        echo "SmartStock test deployment verified successfully."
+                        exit 0
+                    fi
 
-                    def matcher =
-                        (branchName + ' ' + commitMessage) =~ /(SMAR-\d+)/
+                    sleep 2
+                done
 
-                    env.JIRA_ISSUE_KEY = ''
-
-                    if (matcher.find()) {
-                        env.JIRA_ISSUE_KEY = matcher.group(1)
-                        echo "Detected Jira issue: ${env.JIRA_ISSUE_KEY}"
-                    } else {
-                        echo 'No SMAR issue key detected.'
-                    }
-
-                    echo "Commit: ${env.GIT_SHORT_COMMIT}"
-                    echo "Image: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
-                }
-            }
+                echo "ERROR: Test deployment did not return HTTP 200."
+                docker logs --tail 50 "$TEST_CONTAINER" || true
+                exit 1
+            '''
         }
+    }
+}
+
 
         stage('Validate Project') {
             steps {
