@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -31,8 +30,8 @@ pipeline {
 
         string(
             name: 'IMAGE_NAME',
-            defaultValue: 'corsal2006/smartstock',
-            description: 'Docker Hub namespace/image; change if needed'
+            defaultValue: 'sidd2294/smartstock',
+            description: 'Docker Hub namespace/image'
         )
 
         booleanParam(
@@ -253,8 +252,8 @@ pipeline {
                 sh '''
                     set -eu
 
-                    # This uses a dedicated container and port.
-                    # It does not replace the existing SmartStock container.
+                    # Uses a separate test container.
+                    # Does not replace the existing SmartStock container.
 
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
