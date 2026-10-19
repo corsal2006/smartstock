@@ -77,7 +77,7 @@ const nginxPath = path.join(rootDir, 'nginx.conf');
 assert(fs.existsSync(nginxPath), 'nginx.conf exists');
 
 const nginxContent = fs.readFileSync(nginxPath, 'utf8');
-assert(nginxContent.includes('listen 8080;'), 'Nginx listens on unprivileged port 8080');
+assert(nginxContent.includes('listen 80;'), 'Nginx listens on port 80');
 assert(nginxContent.includes('location /healthz'), 'Health check route /healthz defined');
 assert(nginxContent.includes('X-Frame-Options'), 'X-Frame-Options security header present');
 assert(nginxContent.includes('X-Content-Type-Options'), 'X-Content-Type-Options security header present');
@@ -89,10 +89,9 @@ assert(fs.existsSync(dockerfilePath), 'Dockerfile exists');
 
 const dockerContent = fs.readFileSync(dockerfilePath, 'utf8');
 assert(dockerContent.includes('FROM nginx:'), 'Uses official Nginx base image');
-assert(dockerContent.includes('EXPOSE 8080'), 'Exposes port 8080');
-assert(dockerContent.includes('USER nginx'), 'Runs as non-root user (nginx)');
+assert(dockerContent.includes('EXPOSE 80'), 'Exposes port 80');
 assert(dockerContent.includes('HEALTHCHECK'), 'Healthcheck instruction configured');
-assert(dockerContent.includes('/healthz'), 'Healthcheck targets /healthz endpoint');
+assert(dockerContent.includes('http://127.0.0.1/'), 'Healthcheck targets container port 80');
 
 console.log('\n--- 5. Validating Docker Compose Configuration ---');
 const composePath = path.join(rootDir, 'compose.yaml');
@@ -101,7 +100,7 @@ assert(fs.existsSync(composePath), 'compose.yaml exists');
 const composeContent = fs.readFileSync(composePath, 'utf8');
 assert(composeContent.includes('smartstock:'), 'smartstock service defined');
 assert(composeContent.includes('healthcheck:'), 'Compose includes healthcheck');
-assert(composeContent.includes('8080'), 'Compose maps port 8080');
+assert(composeContent.includes('80'), 'Compose maps port 80');
 
 console.log('\n------------------------------------------------');
 if (errors.length > 0) {

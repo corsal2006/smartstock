@@ -214,7 +214,7 @@ pipeline {
                         docker run -d \
                             --name ${CONTAINER_NAME} \
                             --restart unless-stopped \
-                            -p ${params.DEPLOY_PORT}:8080 \
+                            -p ${params.DEPLOY_PORT}:80 \
                             -e APP_ENV=${params.ENVIRONMENT} \
                             ${FULL_IMAGE_NAME}:${IMAGE_TAG}
                     """
@@ -258,7 +258,7 @@ pipeline {
                                 echo "Rolling back to previous working container..."
                                 docker stop ${CONTAINER_NAME} || true
                                 docker rm ${CONTAINER_NAME} || true
-                                docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p ${params.DEPLOY_PORT}:8080 ${CONTAINER_NAME}:rollback
+                                docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p ${params.DEPLOY_PORT}:80 ${CONTAINER_NAME}:rollback
                                 echo "Rollback container started."
                             fi
                         """
