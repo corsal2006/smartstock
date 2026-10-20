@@ -20,7 +20,7 @@ pipeline {
         choice(
             name: 'ENVIRONMENT',
             choices: ['development', 'staging', 'production'],
-            description: 'Target environment'
+            description: 'Target environment for the image tag'
         )
 
         string(
@@ -44,7 +44,13 @@ pipeline {
         booleanParam(
             name: 'DEPLOY_LOCAL',
             defaultValue: true,
-            description: 'Deploy a separate test container on port 8081'
+            description: 'Deploy and verify a separate test container on port 8081'
+        )
+
+        booleanParam(
+            name: 'DEPLOY_PRODUCTION',
+            defaultValue: false,
+            description: 'Deploy the verified image to production on port 8080'
         )
 
         booleanParam(
@@ -250,8 +256,8 @@ pipeline {
                 sh '''
                     set -eu
 
-                    # Use a dedicated test container.
-                    # Do not stop or replace the existing app container.
+                    # This is a separate test container.
+                    # It must not replace the production container.
 
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
@@ -325,6 +331,125 @@ pipeline {
                         error('Test deployment verification failed.')
                     }
                 }
+            }
+        }
+
+        stage('Deploy Production') {
+            when {
+                expression {
+                    params.DEPLOY_PRODUCTION && params.DEPLOY_LOCAL
+                }
+            }
+
+            steps {
+                sh '''
+                    set -eu
+
+                    PROD_CONTAINER="smartstock-container"
+                    BACKUP_TAG="smartstock-app:rollback-${BUILD_NUMBER}"
+                    NEW_IMAGE="$FULL_IMAGE_NAME:$IMAGE_TAG"
+
+                    echo "Preparing production deployment."
+                    echo "New image: $NEW_IMAGE"
+
+                    # Confirm that the candidate image exists locally.
+                    docker image inspect "$NEW_IMAGE" >/dev/null
+
+                    # Save the exact image used by the existing production container.
+                    OLD_IMAGE_ID="$(docker inspect \
+                        --format '{{.Image}}' "$PROD_CONTAINER")"
+
+                    docker tag "$OLD_IMAGE_ID" "$BACKUP_TAG"
+
+                    echo "Rollback image saved as $BACKUP_TAG"
+
+                    # The existing container must be removed to reuse port 8080.
+                    docker rm -f "$PROD_CONTAINER"
+
+                    # Start the candidate image with the existing production settings.
+                    if ! docker run -d \
+                        --name "$PROD_CONTAINER" \
+                        --restart unless-stopped \
+                        -p 8080:80 \
+                        -e "APP_NAME=SmartStock AI" \
+                        -e "APP_ENV=production" \
+                        "$NEW_IMAGE"; then
+
+                        echo "Production startup failed; restoring previous image."
+
+                        docker rm -f "$PROD_CONTAINER" 2>/dev/null || true
+
+                        docker run -d \
+                            --name "$PROD_CONTAINER" \
+                            --restart unless-stopped \
+                            -p 8080:80 \
+                            -e "APP_NAME=SmartStock AI" \
+                            -e "APP_ENV=production" \
+                            "$BACKUP_TAG"
+
+                        exit 1
+                    fi
+
+                    # Verify the application inside the new container.
+                    HEALTHY=false
+
+                    for attempt in $(seq 1 15); do
+                        sleep 2
+
+                        if docker exec "$PROD_CONTAINER" \
+                            wget -q -O /dev/null \
+                            http://127.0.0.1/; then
+
+                            HEALTHY=true
+                            echo "Production health check passed."
+                            break
+                        fi
+
+                        echo "Production health check attempt $attempt failed."
+                    done
+
+                    if [ "$HEALTHY" != "true" ]; then
+                        echo "Production verification failed."
+                        docker logs --tail 50 "$PROD_CONTAINER" || true
+
+                        echo "Restoring previous production image."
+                        docker rm -f "$PROD_CONTAINER" 2>/dev/null || true
+
+                        docker run -d \
+                            --name "$PROD_CONTAINER" \
+                            --restart unless-stopped \
+                            -p 8080:80 \
+                            -e "APP_NAME=SmartStock AI" \
+                            -e "APP_ENV=production" \
+                            "$BACKUP_TAG"
+
+                        # Check that the rollback is responding.
+                        ROLLBACK_OK=false
+
+                        for attempt in $(seq 1 10); do
+                            sleep 2
+
+                            if docker exec "$PROD_CONTAINER" \
+                                wget -q -O /dev/null \
+                                http://127.0.0.1/; then
+                                ROLLBACK_OK=true
+                                break
+                            fi
+                        done
+
+                        if [ "$ROLLBACK_OK" != "true" ]; then
+                            echo "CRITICAL: Rollback health check failed."
+                            docker logs --tail 50 "$PROD_CONTAINER" || true
+                        else
+                            echo "Previous production image restored successfully."
+                        fi
+
+                        exit 1
+                    fi
+
+                    echo "Production deployment succeeded."
+                    docker ps --filter "name=$PROD_CONTAINER"
+                '''
             }
         }
 
