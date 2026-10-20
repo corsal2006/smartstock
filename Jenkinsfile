@@ -14,12 +14,12 @@ pipeline {
 
     parameters {
         choice(name: 'ENVIRONMENT', choices: ['development', 'staging', 'production'],
-               description: 'Environment for non-production branches; main/master deploy as production')
+               description: 'Environment for non-production branches; main/master are treated as production')
         string(name: 'REGISTRY', defaultValue: 'docker.io', description: 'Container registry hostname')
         string(name: 'IMAGE_NAME', defaultValue: 'sidd2294/smartstock', description: 'Docker Hub namespace/image')
         booleanParam(name: 'PUBLISH_IMAGE', defaultValue: true, description: 'Publish the image to Docker Hub')
         booleanParam(name: 'DEPLOY_LOCAL', defaultValue: true, description: 'Deploy and verify a separate test container on port 8081')
-        booleanParam(name: 'DEPLOY_PRODUCTION', defaultValue: true, description: 'Allow automatic production deployment on main/master after test verification')
+        booleanParam(name: 'DEPLOY_PRODUCTION', defaultValue: true, description: 'Allow production deployment on main/master after test verification')
         booleanParam(name: 'RUN_TRIVY', defaultValue: false, description: 'Run Trivy security scanning; requires Trivy installed')
     }
 
@@ -36,15 +36,69 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    env.GIT_SHORT_COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    def rawBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
-                    env.SOURCE_BRANCH = rawBranch.replaceFirst(/^refs\/heads\//, '').replaceFirst(/^origin\//, '')
-                    env.BUILD_ENVIRONMENT = (env.SOURCE_BRANCH == 'main' || env.SOURCE_BRANCH == 'master') ? 'production' : params.ENVIRONMENT
+                    env.GIT_SHORT_COMMIT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    /*
+                     * Regular Pipeline jobs may check out a detached commit,
+                     * so BRANCH_NAME and git branch --show-current can be empty.
+                     * Compare HEAD with fetched remote branch refs instead.
+                     */
+                    def headCommit = sh(
+                        script: 'git rev-parse HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    def mainCommit = sh(
+                        script: 'git rev-parse --verify refs/remotes/origin/main 2>/dev/null || true',
+                        returnStdout: true
+                    ).trim()
+
+                    def masterCommit = sh(
+                        script: 'git rev-parse --verify refs/remotes/origin/master 2>/dev/null || true',
+                        returnStdout: true
+                    ).trim()
+
+                    def detectedBranch = ''
+                    if (mainCommit && headCommit == mainCommit) {
+                        detectedBranch = 'main'
+                    } else if (masterCommit && headCommit == masterCommit) {
+                        detectedBranch = 'master'
+                    } else {
+                        detectedBranch = sh(
+                            script: 'git branch --show-current',
+                            returnStdout: true
+                        ).trim()
+
+                        if (!detectedBranch) {
+                            detectedBranch = (env.GIT_BRANCH ?: '')
+                                .replaceFirst(/^refs\\/remotes\\//, '')
+                                .replaceFirst(/^origin\\//, '')
+                                .replaceFirst(/^refs\\/heads\\//, '')
+                        }
+                    }
+
+                    env.SOURCE_BRANCH = detectedBranch
+                    env.IS_PRODUCTION_BRANCH = (
+                        env.SOURCE_BRANCH == 'main' ||
+                        env.SOURCE_BRANCH == 'master'
+                    ).toString()
+
+                    env.BUILD_ENVIRONMENT = env.IS_PRODUCTION_BRANCH == 'true'
+                        ? 'production'
+                        : params.ENVIRONMENT
+
                     env.IMAGE_TAG = "${env.BUILD_ENVIRONMENT}-${env.BUILD_NUMBER}-${env.GIT_SHORT_COMMIT}"
                     env.FULL_IMAGE_NAME = "${params.REGISTRY}/${params.IMAGE_NAME}"
 
-                    def commitMessage = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
-                    def matcher = (env.SOURCE_BRANCH + ' ' + commitMessage) =~ /(SMAR-\d+)/
+                    def commitMessage = sh(
+                        script: 'git log -1 --pretty=%B',
+                        returnStdout: true
+                    ).trim()
+                    def matcher = (env.SOURCE_BRANCH + ' ' + commitMessage) =~ /(SMAR-\\d+)/
+
                     env.JIRA_ISSUE_KEY = ''
                     if (matcher.find()) {
                         env.JIRA_ISSUE_KEY = matcher.group(1)
@@ -52,10 +106,16 @@ pipeline {
                     } else {
                         echo 'No SMAR issue key detected.'
                     }
-                    echo "Branch: ${env.SOURCE_BRANCH}"
+
+                    echo "Detected branch: ${env.SOURCE_BRANCH ?: '(unknown)'}"
+                    echo "Production branch: ${env.IS_PRODUCTION_BRANCH}"
                     echo "Commit: ${env.GIT_SHORT_COMMIT}"
                     echo "Build environment: ${env.BUILD_ENVIRONMENT}"
                     echo "Image: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
+
+                    if (!env.SOURCE_BRANCH) {
+                        error('Could not determine the checked-out branch. Stopping to avoid an unsafe production deploy.')
+                    }
                 }
             }
         }
@@ -117,16 +177,20 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    docker build --file Dockerfile \
+                    docker build \
+                      --file Dockerfile \
                       --tag "$FULL_IMAGE_NAME:$IMAGE_TAG" \
-                      --tag "$FULL_IMAGE_NAME:$BUILD_ENVIRONMENT-latest" .
+                      --tag "$FULL_IMAGE_NAME:$BUILD_ENVIRONMENT-latest" \
+                      .
                     echo "Docker image built successfully."
                 '''
             }
         }
 
         stage('Security Scan') {
-            when { expression { params.RUN_TRIVY } }
+            when {
+                expression { params.RUN_TRIVY }
+            }
             steps {
                 sh '''
                     set -eu
@@ -134,19 +198,32 @@ pipeline {
                         echo "Trivy is not installed on this Jenkins agent."
                         exit 1
                     fi
-                    trivy image --severity HIGH,CRITICAL --exit-code 1 "$FULL_IMAGE_NAME:$IMAGE_TAG"
+                    trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      "$FULL_IMAGE_NAME:$IMAGE_TAG"
                 '''
             }
         }
 
         stage('Publish Docker Image') {
-            when { expression { params.PUBLISH_IMAGE } }
+            when {
+                expression { params.PUBLISH_IMAGE }
+            }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials',
-                    usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASSWORD')]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-registry-credentials',
+                        usernameVariable: 'REGISTRY_USER',
+                        passwordVariable: 'REGISTRY_PASSWORD'
+                    )
+                ]) {
                     sh '''
                         set -eu
-                        echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" --username "$REGISTRY_USER" --password-stdin
+                        echo "$REGISTRY_PASSWORD" |
+                          docker login "$REGISTRY" \
+                            --username "$REGISTRY_USER" \
+                            --password-stdin
                         docker push "$FULL_IMAGE_NAME:$IMAGE_TAG"
                         docker push "$FULL_IMAGE_NAME:$BUILD_ENVIRONMENT-latest"
                         echo "Docker image published successfully."
@@ -161,13 +238,19 @@ pipeline {
         }
 
         stage('Deploy Separate Test Container') {
-            when { expression { params.DEPLOY_LOCAL } }
+            when {
+                expression { params.DEPLOY_LOCAL }
+            }
             steps {
                 sh '''
                     set -eu
                     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-                    docker run -d --name "$CONTAINER_NAME" --restart unless-stopped \
-                      -p "${DEPLOY_PORT}:80" -e APP_ENV="$BUILD_ENVIRONMENT" "$FULL_IMAGE_NAME:$IMAGE_TAG"
+                    docker run -d \
+                      --name "$CONTAINER_NAME" \
+                      --restart unless-stopped \
+                      -p "${DEPLOY_PORT}:80" \
+                      -e APP_ENV="$BUILD_ENVIRONMENT" \
+                      "$FULL_IMAGE_NAME:$IMAGE_TAG"
                     echo "Test container started."
                     docker ps --filter "name=$CONTAINER_NAME"
                 '''
@@ -175,19 +258,34 @@ pipeline {
         }
 
         stage('Verify Test Deployment') {
-            when { expression { params.DEPLOY_LOCAL } }
+            when {
+                expression { params.DEPLOY_LOCAL }
+            }
             steps {
                 script {
                     def healthy = false
                     for (int attempt = 1; attempt <= 10; attempt++) {
                         sleep(time: 2, unit: 'SECONDS')
-                        def running = sh(script: '''
-                            docker inspect --format '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true
-                        ''', returnStdout: true).trim()
+                        def running = sh(
+                            script: '''
+                                docker inspect \
+                                  --format '{{.State.Running}}' \
+                                  "$CONTAINER_NAME" 2>/dev/null || true
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
                         if (running == 'true') {
-                            def status = sh(script: '''
-                                docker exec "$CONTAINER_NAME" wget -q -O /dev/null http://127.0.0.1/ >/dev/null 2>&1 && echo 200 || echo 000
-                            ''', returnStdout: true).trim()
+                            def status = sh(
+                                script: '''
+                                    docker exec "$CONTAINER_NAME" \
+                                      wget -q -O /dev/null \
+                                      http://127.0.0.1/ \
+                                      >/dev/null 2>&1 \
+                                      && echo 200 || echo 000
+                                ''',
+                                returnStdout: true
+                            ).trim()
                             echo "Health check attempt ${attempt}: HTTP ${status}"
                             if (status == '200') {
                                 healthy = true
@@ -198,6 +296,7 @@ pipeline {
                             echo "Test container is not running (attempt ${attempt})."
                         }
                     }
+
                     if (!healthy) {
                         sh '''
                             echo "Container status:"
@@ -214,8 +313,9 @@ pipeline {
         stage('Deploy Production') {
             when {
                 expression {
-                    params.DEPLOY_PRODUCTION && params.DEPLOY_LOCAL &&
-                    (env.SOURCE_BRANCH == 'main' || env.SOURCE_BRANCH == 'master')
+                    params.DEPLOY_PRODUCTION &&
+                    params.DEPLOY_LOCAL &&
+                    env.IS_PRODUCTION_BRANCH == 'true'
                 }
             }
             steps {
@@ -225,29 +325,43 @@ pipeline {
                     BACKUP_TAG="smartstock-app:rollback-${BUILD_NUMBER}"
                     NEW_IMAGE="$FULL_IMAGE_NAME:$IMAGE_TAG"
 
-                    echo "Preparing production deployment from $SOURCE_BRANCH."
+                    echo "Preparing production deployment."
+                    echo "Source branch: $SOURCE_BRANCH"
                     echo "New image: $NEW_IMAGE"
                     docker image inspect "$NEW_IMAGE" >/dev/null
 
-                    OLD_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$PROD_CONTAINER")"
+                    OLD_IMAGE_ID="$(docker inspect \
+                        --format '{{.Image}}' "$PROD_CONTAINER")"
                     docker tag "$OLD_IMAGE_ID" "$BACKUP_TAG"
                     echo "Rollback image saved as $BACKUP_TAG"
 
                     docker rm -f "$PROD_CONTAINER"
 
-                    if ! docker run -d --name "$PROD_CONTAINER" --restart unless-stopped \
-                        -p 8080:80 -e "APP_NAME=SmartStock AI" -e "APP_ENV=production" "$NEW_IMAGE"; then
+                    if ! docker run -d \
+                        --name "$PROD_CONTAINER" \
+                        --restart unless-stopped \
+                        -p 8080:80 \
+                        -e "APP_NAME=SmartStock AI" \
+                        -e "APP_ENV=production" \
+                        "$NEW_IMAGE"; then
                         echo "Production startup failed; restoring previous image."
                         docker rm -f "$PROD_CONTAINER" 2>/dev/null || true
-                        docker run -d --name "$PROD_CONTAINER" --restart unless-stopped \
-                            -p 8080:80 -e "APP_NAME=SmartStock AI" -e "APP_ENV=production" "$BACKUP_TAG"
+                        docker run -d \
+                            --name "$PROD_CONTAINER" \
+                            --restart unless-stopped \
+                            -p 8080:80 \
+                            -e "APP_NAME=SmartStock AI" \
+                            -e "APP_ENV=production" \
+                            "$BACKUP_TAG"
                         exit 1
                     fi
 
                     HEALTHY=false
                     for attempt in $(seq 1 15); do
                         sleep 2
-                        if docker exec "$PROD_CONTAINER" wget -q -O /dev/null http://127.0.0.1/; then
+                        if docker exec "$PROD_CONTAINER" \
+                            wget -q -O /dev/null \
+                            http://127.0.0.1/; then
                             HEALTHY=true
                             echo "Production health check passed."
                             break
@@ -260,13 +374,20 @@ pipeline {
                         docker logs --tail 50 "$PROD_CONTAINER" || true
                         echo "Restoring previous production image."
                         docker rm -f "$PROD_CONTAINER" 2>/dev/null || true
-                        docker run -d --name "$PROD_CONTAINER" --restart unless-stopped \
-                            -p 8080:80 -e "APP_NAME=SmartStock AI" -e "APP_ENV=production" "$BACKUP_TAG"
+                        docker run -d \
+                            --name "$PROD_CONTAINER" \
+                            --restart unless-stopped \
+                            -p 8080:80 \
+                            -e "APP_NAME=SmartStock AI" \
+                            -e "APP_ENV=production" \
+                            "$BACKUP_TAG"
 
                         ROLLBACK_OK=false
                         for attempt in $(seq 1 10); do
                             sleep 2
-                            if docker exec "$PROD_CONTAINER" wget -q -O /dev/null http://127.0.0.1/; then
+                            if docker exec "$PROD_CONTAINER" \
+                                wget -q -O /dev/null \
+                                http://127.0.0.1/; then
                                 ROLLBACK_OK=true
                                 break
                             fi
